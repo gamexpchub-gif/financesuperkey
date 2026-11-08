@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { RestrictionRequest } from '@/lib/types';
 import { RequestPill, PageHeader, TableSkeleton, EmptyState, fmtDate } from '@/components/ui';
+import { useToast } from '@/components/toast';
 
 const FILTERS = [
   { v: 'pending', l: 'Pending' },
@@ -12,6 +13,7 @@ const FILTERS = [
 ];
 
 export default function RestrictionRequestsPage() {
+  const toast = useToast();
   const [rows, setRows] = useState<RestrictionRequest[] | null>(null);
   const [status, setStatus] = useState('pending');
   const [busy, setBusy] = useState<string | null>(null);
@@ -36,9 +38,10 @@ export default function RestrictionRequestsPage() {
     setErr(null);
     try {
       await api.post(`/restriction-requests/${id}/${action}`);
+      toast.success(action === 'approve' ? 'Request approved — policy applied' : 'Request rejected');
       await load();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Action failed');
+      toast.error(e instanceof Error ? e.message : 'Action failed');
     } finally {
       setBusy(null);
     }

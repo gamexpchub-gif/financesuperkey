@@ -114,6 +114,75 @@ export class RestrictionService {
     return { status: 'approved', deviceId: request.deviceId, serverDecisionId: decisionId };
   }
 
+  /**
+   * Admin applies a restriction/release directly (the admin *is* the authority,
+   * so no separate request→approval round-trip). Still records an approved
+   * request row + policy + audit entry, so the trail is identical.
+   */
+  async adminApply(
+    adminId: string,
+    deviceId: string,
+    type: RestrictionType,
+    reason: string,
+  ) {
+    const device = await this.prisma.device.findUnique({
+      where: { id: deviceId },
+    });
+    if (!device) throw new NotFoundException('Device not found');
+    if (type === 'restrict' && device.status === 'restricted') {
+      throw new BadRequestException('Device is already restricted');
+    }
+    if (type === 'release' && device.status !== 'restricted') {
+      throw new BadRequestException('Device is not restricted');
+    }
+
+    const decisionId = randomUUID();
+    const isRestrict = type === 'restrict';
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.restrictionRequest.create({
+        data: {
+          deviceId,
+          merchantId: device.merchantId,
+          requestedBy: adminId,
+          type,
+          reason,
+          status: 'approved',
+          reviewedBy: adminId,
+          reviewedAt: new Date(),
+        },
+      });
+      await tx.devicePolicy.updateMany({
+        where: { deviceId, active: true },
+        data: { active: false },
+      });
+      await tx.devicePolicy.create({
+        data: {
+          deviceId,
+          policyType: isRestrict ? 'restricted' : 'normal',
+          appliedById: adminId,
+          reason,
+          serverDecisionId: decisionId,
+          active: true,
+        },
+      });
+      await tx.device.update({
+        where: { id: deviceId },
+        data: { status: isRestrict ? 'restricted' : 'active' },
+      });
+    });
+
+    await this.audit.record({
+      actorId: adminId,
+      merchantId: device.merchantId,
+      action: `restriction.admin_${type}`,
+      entityType: 'device',
+      entityId: deviceId,
+      metadata: { serverDecisionId: decisionId, reason },
+    });
+    return { status: 'applied', type, deviceId, serverDecisionId: decisionId };
+  }
+
   async reject(adminId: string, requestId: string, reason?: string) {
     const request = await this.prisma.restrictionRequest.findUnique({
       where: { id: requestId },

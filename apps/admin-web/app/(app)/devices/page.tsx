@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { Device, DeviceStatus, Paged } from '@/lib/types';
 import { DevicePill, PageHeader, TableSkeleton, EmptyState, fmtDate } from '@/components/ui';
+import { DeviceDrawer } from '@/components/device-drawer';
 
 const FILTERS = [
   { v: '', l: 'All' },
@@ -18,6 +19,7 @@ export default function DevicesPage() {
   const [status, setStatus] = useState('');
   const [q, setQ] = useState('');
   const [err, setErr] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setErr(null);
@@ -74,11 +76,11 @@ export default function DevicesPage() {
             ) : (
               <table>
                 <thead>
-                  <tr><th>Customer</th><th>Model</th><th>IMEI</th><th>Status</th><th>Enrolled</th></tr>
+                  <tr><th>Customer</th><th>Model</th><th>IMEI</th><th>Status</th><th>Enrolled</th><th></th></tr>
                 </thead>
                 <tbody>
                   {rows.map((d) => (
-                    <tr key={d.id}>
+                    <tr key={d.id} style={{ cursor: 'pointer' }} onClick={() => setSelected(d.id)}>
                       <td>
                         <div className="cell-strong">{d.customer?.fullName ?? '—'}</div>
                         <div className="mono">{d.customer?.phone ?? ''}</div>
@@ -87,6 +89,9 @@ export default function DevicesPage() {
                       <td className="mono">{d.imeiMasked}</td>
                       <td><DevicePill status={d.status as DeviceStatus} /></td>
                       <td className="mono">{fmtDate(d.createdAt)}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        <span className="btn ghost sm">Manage</span>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -95,6 +100,14 @@ export default function DevicesPage() {
           </div>
         </div>
       </div>
+
+      {selected && (
+        <DeviceDrawer
+          deviceId={selected}
+          onClose={() => setSelected(null)}
+          onChanged={load}
+        />
+      )}
     </>
   );
 }

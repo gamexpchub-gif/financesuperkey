@@ -65,7 +65,8 @@ export class CustomersController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    const merchantId = this.requireMerchant(user);
+    // Super admin sees every tenant; merchant staff are scoped to their own.
+    const merchantId = user.isSuperAdmin ? undefined : this.requireMerchant(user);
     return this.customers.list(
       merchantId,
       q,
@@ -77,7 +78,8 @@ export class CustomersController {
   @Get(':id')
   @RequirePermissions(Permission.CustomerRead)
   get(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.customers.get(this.requireMerchant(user), id);
+    const merchantId = user.isSuperAdmin ? undefined : this.requireMerchant(user);
+    return this.customers.get(merchantId, id);
   }
 
   @Patch(':id')

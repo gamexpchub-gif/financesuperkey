@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { Merchant, Paged } from '@/lib/types';
 import { MerchantPill, PageHeader, TableSkeleton, EmptyState, fmtDate } from '@/components/ui';
+import { useToast } from '@/components/toast';
 
 const FILTERS = [
   { v: '', l: 'All' },
@@ -13,6 +14,7 @@ const FILTERS = [
 ];
 
 export default function MerchantsPage() {
+  const toast = useToast();
   const [rows, setRows] = useState<Merchant[] | null>(null);
   const [filter, setFilter] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
@@ -37,9 +39,10 @@ export default function MerchantsPage() {
     setBusy(id);
     try {
       await api.post(`/merchants/${id}/${action}`);
+      toast.success(action === 'approve' ? 'Merchant approved' : 'Merchant suspended');
       await load();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Action failed');
+      toast.error(e instanceof Error ? e.message : 'Action failed');
     } finally {
       setBusy(null);
     }

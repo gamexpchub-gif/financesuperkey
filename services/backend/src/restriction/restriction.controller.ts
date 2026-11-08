@@ -18,6 +18,10 @@ class CreateRequestDto {
   @IsString() @MinLength(3) reason!: string;
 }
 
+class ReasonDto {
+  @IsString() @MinLength(3) reason!: string;
+}
+
 class RejectDto {
   @IsOptional() @IsString() reason?: string;
 }
@@ -53,6 +57,28 @@ export class RestrictionController {
   ) {
     const merchantId = user.isSuperAdmin ? undefined : user.merchantId ?? undefined;
     return this.restriction.listRequests(merchantId, status);
+  }
+
+  /** Admin applies a restriction directly to a device (no request needed). */
+  @Post('devices/:id/restrict')
+  @RequirePermissions(Permission.DeviceRestrictApprove)
+  adminRestrict(
+    @CurrentUser() user: AuthUser,
+    @Param('id') deviceId: string,
+    @Body() dto: ReasonDto,
+  ) {
+    return this.restriction.adminApply(user.id, deviceId, 'restrict', dto.reason);
+  }
+
+  /** Admin releases a restriction directly. */
+  @Post('devices/:id/release')
+  @RequirePermissions(Permission.DeviceRestrictApprove)
+  adminRelease(
+    @CurrentUser() user: AuthUser,
+    @Param('id') deviceId: string,
+    @Body() dto: ReasonDto,
+  ) {
+    return this.restriction.adminApply(user.id, deviceId, 'release', dto.reason);
   }
 
   @Post('restriction-requests/:id/approve')

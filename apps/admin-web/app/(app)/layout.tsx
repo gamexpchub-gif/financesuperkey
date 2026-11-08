@@ -6,10 +6,12 @@ import Link from 'next/link';
 import { api, tokenStore, SessionUser } from '@/lib/api';
 import { Overview } from '@/lib/types';
 import { ThemeToggle } from '@/components/ui';
+import { ToastProvider } from '@/components/toast';
 
 const NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: 'home' },
   { href: '/merchants', label: 'Merchants', icon: 'shop' },
+  { href: '/customers', label: 'Customers', icon: 'users' },
   { href: '/devices', label: 'Devices', icon: 'device' },
   { href: '/restriction-requests', label: 'Restriction Review', icon: 'lock', badge: true },
   { href: '/audit-logs', label: 'Audit Log', icon: 'list' },
@@ -19,6 +21,7 @@ function Icon({ name }: { name: string }) {
   const p: Record<string, React.ReactNode> = {
     home: <><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V20h14V9.5" /></>,
     shop: <><path d="M4 9h16l-1-5H5L4 9Z" /><path d="M5 9v11h14V9" /><path d="M9 20v-6h6v6" /></>,
+    users: <><circle cx="9" cy="8" r="3.2" /><path d="M3 20a6 6 0 0 1 12 0M16 3.5a3.2 3.2 0 0 1 0 6M15 20a6 6 0 0 0-1-3.3" /></>,
     device: <><rect x="6" y="2" width="12" height="20" rx="3" /><path d="M11 18h2" /></>,
     lock: <><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></>,
     list: <><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></>,
@@ -106,7 +109,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <main className="main">{children}</main>
+      <main className="main">
+        <ToastProvider>{children}</ToastProvider>
+      </main>
     </div>
   );
 }

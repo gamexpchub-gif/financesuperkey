@@ -20,9 +20,15 @@ export class CustomersService {
     });
   }
 
-  async list(merchantId: string, q?: string, page = 1, limit = 20) {
+  /** merchantId undefined = super admin listing across all tenants. */
+  async list(
+    merchantId: string | undefined,
+    q?: string,
+    page = 1,
+    limit = 20,
+  ) {
     const where: Prisma.CustomerWhereInput = {
-      merchantId,
+      ...(merchantId ? { merchantId } : {}),
       ...(q
         ? {
             OR: [
@@ -35,6 +41,7 @@ export class CustomersService {
     const [data, total] = await this.prisma.$transaction([
       this.prisma.customer.findMany({
         where,
+        include: { merchant: { select: { name: true, dealerNo: true } } },
         orderBy: { createdAt: 'desc' },
         skip: (Math.max(1, page) - 1) * limit,
         take: Math.min(100, limit),
@@ -44,10 +51,10 @@ export class CustomersService {
     return { data, total };
   }
 
-  async get(merchantId: string, id: string) {
+  async get(merchantId: string | undefined, id: string) {
     const customer = await this.prisma.customer.findFirst({
-      where: { id, merchantId },
-      include: { devices: true },
+      where: { id, ...(merchantId ? { merchantId } : {}) },
+      include: { devices: true, merchant: { select: { name: true, dealerNo: true } } },
     });
     if (!customer) throw new NotFoundException('Customer not found');
     return customer;

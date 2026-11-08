@@ -39,6 +39,38 @@ export interface RestrictionRequest {
   createdAt: string;
 }
 
+export interface Customer {
+  id: string;
+  fullName: string;
+  phone: string;
+  nidNo: string | null;
+  address: string | null;
+  dealerNo: string | null;
+  createdAt: string;
+  merchant?: { name: string; dealerNo: string };
+}
+
+export interface DevicePolicy {
+  id: string;
+  policyType: 'normal' | 'reminder' | 'restricted';
+  appliedAt: string;
+  reason: string | null;
+  serverDecisionId: string | null;
+  active: boolean;
+}
+
+export interface DeviceTimeline {
+  enrollment: {
+    method: string;
+    status: string;
+    consentAt: string | null;
+    consentTextVersion: string | null;
+    createdAt: string;
+  } | null;
+  policies: DevicePolicy[];
+  requests: RestrictionRequest[];
+}
+
 export interface AuditLog {
   id: string;
   actorId: string | null;
