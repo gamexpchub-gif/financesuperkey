@@ -3,7 +3,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { RestrictionRequest } from '@/lib/types';
-import { RequestPill, Loading, fmtDate } from '@/components/ui';
+import { RequestPill, PageHeader, TableSkeleton, EmptyState, fmtDate } from '@/components/ui';
+
+const FILTERS = [
+  { v: 'pending', l: 'Pending' },
+  { v: 'approved', l: 'Approved' },
+  { v: 'rejected', l: 'Rejected' },
+];
 
 export default function RestrictionRequestsPage() {
   const [rows, setRows] = useState<RestrictionRequest[] | null>(null);
@@ -13,19 +19,17 @@ export default function RestrictionRequestsPage() {
 
   const load = useCallback(async () => {
     setErr(null);
+    setRows(null);
     try {
-      const res = await api.get<RestrictionRequest[]>(
-        `/restriction-requests?status=${status}`,
-      );
+      const res = await api.get<RestrictionRequest[]>(`/restriction-requests?status=${status}`);
       setRows(res);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'লোড ব্যর্থ');
+      setErr(e instanceof Error ? e.message : 'Failed to load');
+      setRows([]);
     }
   }, [status]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
 
   async function decide(id: string, action: 'approve' | 'reject') {
     setBusy(id);
@@ -34,7 +38,7 @@ export default function RestrictionRequestsPage() {
       await api.post(`/restriction-requests/${id}/${action}`);
       await load();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'ব্যর্থ');
+      setErr(e instanceof Error ? e.message : 'Action failed');
     } finally {
       setBusy(null);
     }
@@ -42,82 +46,69 @@ export default function RestrictionRequestsPage() {
 
   return (
     <>
-      <div className="page-head">
-        <div>
-          <h1>Restriction Review</h1>
-          <p>মার্চেন্টের অনুরোধ যাচাই করে অনুমোদন বা প্রত্যাখ্যান করুন</p>
+      <PageHeader title="Restriction Review" subtitle="Review and decide on merchant requests" />
+      <div className="content">
+        <div className="toolbar">
+          <div className="seg">
+            {FILTERS.map((f) => (
+              <button key={f.v} className={status === f.v ? 'on' : ''} onClick={() => setStatus(f.v)}>{f.l}</button>
+            ))}
+          </div>
         </div>
-      </div>
 
-      <div className="toolbar" style={{ marginBottom: 16 }}>
-        {[
-          { v: 'pending', l: 'অপেক্ষমাণ' },
-          { v: 'approved', l: 'অনুমোদিত' },
-          { v: 'rejected', l: 'প্রত্যাখ্যাত' },
-        ].map((f) => (
-          <button key={f.v} className={`chip${status === f.v ? ' on' : ''}`} onClick={() => setStatus(f.v)}>
-            {f.l}
-          </button>
-        ))}
-      </div>
+        {err && <div className="err">{err}</div>}
 
-      {err && <div className="err">{err}</div>}
-
-      <div className="panel">
-        <div className="panel-head">
-          <h3>অনুরোধ</h3>
-          {rows && <span className="pill info">{rows.length} টি</span>}
-        </div>
-        <div className="table-wrap">
-          {!rows ? (
-            <Loading />
-          ) : rows.length === 0 ? (
-            <div className="empty">এই অবস্থায় কোনো অনুরোধ নেই</div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>ধরন</th>
-                  <th>কারণ</th>
-                  <th>ডিভাইস</th>
-                  <th>স্ট্যাটাস</th>
-                  <th>সময়</th>
-                  {status === 'pending' && <th style={{ textAlign: 'right' }}>সিদ্ধান্ত</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.id}>
-                    <td>
-                      <span className={`pill ${r.type === 'restrict' ? 'crit' : 'good'}`}>
-                        <span className="dot" /> {r.type === 'restrict' ? 'সীমিত করুন' : 'প্রত্যাহার'}
-                      </span>
-                    </td>
-                    <td style={{ maxWidth: 280 }}>{r.reason}</td>
-                    <td className="mono">{r.deviceId.slice(0, 8)}…</td>
-                    <td><RequestPill status={r.status} /></td>
-                    <td className="mono">{fmtDate(r.createdAt)}</td>
-                    {status === 'pending' && (
-                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        <button className="btn good sm" disabled={busy === r.id} onClick={() => decide(r.id, 'approve')}>
-                          অনুমোদন
-                        </button>{' '}
-                        <button className="btn danger sm" disabled={busy === r.id} onClick={() => decide(r.id, 'reject')}>
-                          প্রত্যাখ্যান
-                        </button>
-                      </td>
-                    )}
+        <div className="panel">
+          <div className="panel-head">
+            <h3>Requests</h3>
+            {rows && <span className="count-pill">{rows.length}</span>}
+          </div>
+          <div className="table-wrap">
+            {!rows ? (
+              <TableSkeleton cols={5} />
+            ) : rows.length === 0 ? (
+              <EmptyState title={`No ${status} requests`} icon={
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg>
+              } />
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Type</th><th>Reason</th><th>Device</th><th>Status</th><th>Requested</th>
+                    {status === 'pending' && <th style={{ textAlign: 'right' }}>Decision</th>}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.id}>
+                      <td>
+                        <span className={`pill ${r.type === 'restrict' ? 'crit' : 'good'}`}>
+                          <span className="dot" />{r.type === 'restrict' ? 'Restrict' : 'Release'}
+                        </span>
+                      </td>
+                      <td style={{ maxWidth: 300 }}>{r.reason}</td>
+                      <td className="mono">{r.deviceId.slice(0, 8)}…</td>
+                      <td><RequestPill status={r.status} /></td>
+                      <td className="mono">{fmtDate(r.createdAt)}</td>
+                      {status === 'pending' && (
+                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          <button className="btn good sm" disabled={busy === r.id} onClick={() => decide(r.id, 'approve')}>Approve</button>{' '}
+                          <button className="btn danger sm" disabled={busy === r.id} onClick={() => decide(r.id, 'reject')}>Reject</button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
-      </div>
 
-      <p className="note">
-        অনুমোদন করলে সার্ভার device policy push করে (restricted অবস্থায়ও জরুরি কল চালু থাকে)। প্রতিটি সিদ্ধান্ত immutable audit log-এ সংরক্ষিত হয়।
-      </p>
+        <p className="note">
+          Approving pushes a device policy from the server (emergency calls stay on even when restricted).
+          Every decision is written to the append-only audit log.
+        </p>
+      </div>
     </>
   );
 }

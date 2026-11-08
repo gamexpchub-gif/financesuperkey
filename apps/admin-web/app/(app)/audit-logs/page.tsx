@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { AuditLog } from '@/lib/types';
-import { Loading, fmtDate } from '@/components/ui';
+import { PageHeader, TableSkeleton, EmptyState, fmtDate } from '@/components/ui';
 
 function actionTone(action: string): string {
-  if (action.includes('approve') || action.includes('complete') || action.includes('grant')) return 'good';
-  if (action.includes('restrict') || action.includes('suspend') || action.includes('revoke') || action.includes('reject')) return 'crit';
+  if (/approve|complete|grant|active/.test(action)) return 'good';
+  if (/restrict|suspend|revoke|reject/.test(action)) return 'crit';
   return 'info';
 }
 
@@ -15,63 +15,53 @@ export default function AuditLogsPage() {
   const [rows, setRows] = useState<AuditLog[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  useEffect(() => {
-    api
-      .get<AuditLog[]>('/audit-logs?limit=100')
-      .then(setRows)
-      .catch((e) => setErr(e.message));
+  const load = useCallback(() => {
+    setRows(null);
+    api.get<AuditLog[]>('/audit-logs?limit=100').then(setRows).catch((e) => { setErr(e.message); setRows([]); });
   }, []);
+  useEffect(() => { load(); }, [load]);
 
   return (
     <>
-      <div className="page-head">
-        <div>
-          <h1>অডিট লগ</h1>
-          <p>append-only — কে কখন কী করেছে</p>
-        </div>
-      </div>
-
-      {err && <div className="err">{err}</div>}
-
-      <div className="panel">
-        <div className="panel-head">
-          <h3>কার্যক্রম</h3>
-          {rows && <span className="pill info">{rows.length} টি</span>}
-        </div>
-        <div className="table-wrap">
-          {!rows ? (
-            <Loading />
-          ) : rows.length === 0 ? (
-            <div className="empty">কোনো লগ নেই</div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>অ্যাকশন</th>
-                  <th>এনটিটি</th>
-                  <th>অ্যাক্টর</th>
-                  <th>সময়</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((l) => (
-                  <tr key={l.id}>
-                    <td>
-                      <span className={`pill ${actionTone(l.action)}`}>
-                        <span className="dot" /> {l.action}
-                      </span>
-                    </td>
-                    <td className="mono">
-                      {l.entityType ?? '—'}
-                      {l.entityId ? ` · ${l.entityId.slice(0, 8)}…` : ''}
-                    </td>
-                    <td className="mono">{l.actorId ? `${l.actorId.slice(0, 8)}…` : 'system'}</td>
-                    <td className="mono">{fmtDate(l.createdAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+      <PageHeader
+        title="Audit Log"
+        subtitle="Append-only record of every action"
+        actions={
+          <button className="icon-btn" onClick={load} aria-label="Refresh">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4" /><path d="M21 3v6h-6" /></svg>
+          </button>
+        }
+      />
+      <div className="content">
+        {err && <div className="err">{err}</div>}
+        <div className="panel">
+          <div className="panel-head">
+            <h3>Activity</h3>
+            {rows && <span className="count-pill">{rows.length}</span>}
+          </div>
+          <div className="table-wrap">
+            {!rows ? (
+              <TableSkeleton cols={4} />
+            ) : rows.length === 0 ? (
+              <EmptyState title="No activity yet" />
+            ) : (
+              <table>
+                <thead>
+                  <tr><th>Action</th><th>Entity</th><th>Actor</th><th>Time</th></tr>
+                </thead>
+                <tbody>
+                  {rows.map((l) => (
+                    <tr key={l.id}>
+                      <td><span className={`pill ${actionTone(l.action)}`}><span className="dot" />{l.action}</span></td>
+                      <td className="mono">{l.entityType ?? '—'}{l.entityId ? ` · ${l.entityId.slice(0, 8)}…` : ''}</td>
+                      <td className="mono">{l.actorId ? `${l.actorId.slice(0, 8)}…` : 'system'}</td>
+                      <td className="mono">{fmtDate(l.createdAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
       </div>
     </>

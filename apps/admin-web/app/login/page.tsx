@@ -22,21 +22,16 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      const res = await api.post<LoginResponse>('/auth/login', {
-        identifier,
-        password,
-      });
+      const res = await api.post<LoginResponse>('/auth/login', { identifier, password });
       if (res.user.userType !== 'super_admin' && res.user.userType !== 'admin_staff') {
-        setError('এই প্যানেল শুধু অ্যাডমিনদের জন্য।');
+        setError('This panel is for administrators only.');
         setLoading(false);
         return;
       }
       tokenStore.set(res.access, res.refresh, res.user);
       router.replace('/dashboard');
     } catch (err) {
-      setError(
-        err instanceof ApiError ? err.message : 'লগইন ব্যর্থ — আবার চেষ্টা করুন',
-      );
+      setError(err instanceof ApiError ? err.message : 'Sign in failed — please try again');
       setLoading(false);
     }
   }
@@ -47,49 +42,39 @@ export default function LoginPage() {
         <div className="lb">
           <div className="logo">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="8" cy="8" r="5" />
-              <path d="M11.5 11.5 20 20" />
-              <path d="M17 17l2.5-2.5" />
+              <circle cx="8" cy="8" r="5" /><path d="M11.5 11.5 20 20" /><path d="M17 17l2.5-2.5" />
             </svg>
           </div>
           <div>
-            <b style={{ fontSize: 16, fontWeight: 700 }}>Finance Super Key</b>
-            <div style={{ fontSize: 12, color: 'var(--muted)' }}>Super Admin Panel</div>
+            <h2>Finance Super Key</h2>
+            <div className="lsub">Super Admin Console</div>
           </div>
         </div>
 
-        {error && <div className="err">{error}</div>}
+        <div className="login-form">
+          {error && (
+            <div className="err">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9" /><path d="M12 8v4M12 16h.01" strokeLinecap="round" /></svg>
+              {error}
+            </div>
+          )}
 
-        <div className="field">
-          <label htmlFor="id">ফোন বা ইমেইল</label>
-          <input
-            id="id"
-            className="input"
-            value={identifier}
-            onChange={(e) => setIdentifier(e.target.value)}
-            placeholder="01700000000"
-            autoComplete="username"
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="pw">পাসওয়ার্ড</label>
-          <input
-            id="pw"
-            className="input"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
-            autoComplete="current-password"
-          />
-        </div>
+          <div className="field">
+            <label htmlFor="id">Phone or email</label>
+            <input id="id" className="input" value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="01700000000" autoComplete="username" />
+          </div>
+          <div className="field">
+            <label htmlFor="pw">Password</label>
+            <input id="pw" className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" autoComplete="current-password" />
+          </div>
 
-        <button className="btn pri" style={{ width: '100%', marginTop: 4 }} disabled={loading}>
-          {loading ? <span className="spinner" style={{ borderTopColor: '#fff' }} /> : 'লগইন'}
-        </button>
+          <button className="btn pri" style={{ width: '100%', marginTop: 4 }} disabled={loading}>
+            {loading ? <span className="spinner" style={{ borderTopColor: '#fff' }} /> : 'Sign in'}
+          </button>
 
-        <div className="cred-hint">
-          <b>Dev লগইন:</b> 01700000000 / Admin@12345
+          <div className="cred-hint">
+            <b>Dev login:</b> <code>01700000000</code> / <code>Admin@12345</code>
+          </div>
         </div>
       </form>
     </div>

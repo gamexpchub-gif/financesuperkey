@@ -5,13 +5,14 @@ import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api, tokenStore, SessionUser } from '@/lib/api';
 import { Overview } from '@/lib/types';
+import { ThemeToggle } from '@/components/ui';
 
 const NAV = [
-  { href: '/dashboard', label: 'ড্যাশবোর্ড', icon: 'home' },
-  { href: '/merchants', label: 'মার্চেন্ট', icon: 'shop' },
-  { href: '/devices', label: 'ডিভাইস', icon: 'device' },
+  { href: '/dashboard', label: 'Dashboard', icon: 'home' },
+  { href: '/merchants', label: 'Merchants', icon: 'shop' },
+  { href: '/devices', label: 'Devices', icon: 'device' },
   { href: '/restriction-requests', label: 'Restriction Review', icon: 'lock', badge: true },
-  { href: '/audit-logs', label: 'অডিট লগ', icon: 'list' },
+  { href: '/audit-logs', label: 'Audit Log', icon: 'list' },
 ];
 
 function Icon({ name }: { name: string }) {
@@ -43,10 +44,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     }
     setUser(tokenStore.user());
     setReady(true);
-    api
-      .get<Overview>('/reports/overview')
-      .then((o) => setPending(o.restrictionRequests.pending))
-      .catch(() => {});
+    api.get<Overview>('/reports/overview').then((o) => setPending(o.restrictionRequests.pending)).catch(() => {});
   }, [router]);
 
   function logout() {
@@ -62,46 +60,72 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
+  const roleLabel = user?.userType === 'super_admin' ? 'Super Admin' : 'Admin';
+
   return (
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
           <div className="logo">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="8" cy="8" r="5" />
-              <path d="M11.5 11.5 20 20M17 17l2.5-2.5" />
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#231704" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="8" cy="8" r="5" /><path d="M11.5 11.5 20 20M17 17l2.5-2.5" />
             </svg>
           </div>
           <div>
-            <b>Super Key</b>
-            <span>Admin Panel</span>
+            <b>Finance Super Key</b>
+            <span>Admin Console</span>
           </div>
         </div>
 
-        {NAV.map((n) => {
-          const active = pathname === n.href || pathname.startsWith(n.href + '/');
-          return (
-            <Link key={n.href} href={n.href} className={`nav-item${active ? ' active' : ''}`}>
-              <Icon name={n.icon} />
-              {n.label}
-              {n.badge && pending > 0 && <span className="pip">{pending}</span>}
-            </Link>
-          );
-        })}
+        <div className="nav-label">Overview</div>
+        {NAV.slice(0, 1).map((n) => (
+          <NavLink key={n.href} n={n} pathname={pathname} pending={pending} />
+        ))}
+        <div className="nav-label">Manage</div>
+        {NAV.slice(1).map((n) => (
+          <NavLink key={n.href} n={n} pathname={pathname} pending={pending} />
+        ))}
 
         <div className="foot">
-          <div className="who">
-            {user?.userType === 'super_admin' ? 'Super Admin' : 'Admin'}
-            <br />
-            {user?.id?.slice(0, 8)}…
+          <div className="user-chip">
+            <div className="av">{roleLabel.slice(0, 1)}</div>
+            <div style={{ minWidth: 0 }}>
+              <b>{roleLabel}</b>
+              <span>ID {user?.id?.slice(0, 8)}…</span>
+            </div>
           </div>
-          <button className="logout" onClick={logout}>
-            লগ আউট
-          </button>
+          <div className="sidebar-actions">
+            <ThemeToggle compact />
+            <button className="s-btn" onClick={logout}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
+              </svg>
+              Sign out
+            </button>
+          </div>
         </div>
       </aside>
 
       <main className="main">{children}</main>
     </div>
+  );
+}
+
+function NavLink({
+  n,
+  pathname,
+  pending,
+}: {
+  n: { href: string; label: string; icon: string; badge?: boolean };
+  pathname: string;
+  pending: number;
+}) {
+  const active = pathname === n.href || pathname.startsWith(n.href + '/');
+  return (
+    <Link href={n.href} className={`nav-item${active ? ' active' : ''}`}>
+      <Icon name={n.icon} />
+      {n.label}
+      {n.badge && pending > 0 && <span className="pip">{pending}</span>}
+    </Link>
   );
 }
