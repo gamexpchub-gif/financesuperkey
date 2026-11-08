@@ -1,0 +1,64 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+vendor/
+
+# Build output
+dist/
+build/
+out/
+.next/
+*.apk
+*.aab
+*.ipa
+
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+**/ios/Flutter/.last_build_id
+
+# Android
+*.iml
+.gradle/
+local.properties
+.cxx/
+captures/
+app/release/
+
+# Environment & secrets  (NEVER commit real keys)
+.env
+.env.*
+!.env.example
+*.pem
+*.keystore
+*.jks
+google-services.json
+GoogleService-Info.plist
+secrets/
+
+# Database
+*.sqlite
+*.db
+pgdata/
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-error.log*
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp
+
+# Test / coverage
+coverage/
+.nyc_output/
