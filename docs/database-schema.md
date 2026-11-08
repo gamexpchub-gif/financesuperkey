@@ -163,7 +163,7 @@ Merchant package ও billing।
 | consumed_at | timestamptz | |
 | released_at | timestamptz | |
 
-> **Key quota** = count(available) per merchant। Enrollment সফল হলে একটি key `available→consumed`; device decommission হলে `consumed→released`।
+> **Key quota** = count(available) per merchant। Enrollment শুরু হলে একটি key `available→consumed`; enrollment revoke / device decommission হলে key আবার `available`-এ ফিরে আসে (slot পুনঃব্যবহারযোগ্য)। `released` state শুধু admin-এর স্থায়ীভাবে retire করা key-এর জন্য reserved।
 
 ### notifications
 | column | type | note |

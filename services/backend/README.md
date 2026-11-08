@@ -25,13 +25,36 @@ emi           — (Coming Soon) schedule, installment, collection, ledger
 - Secrets cloud secret manager-এ; `.env` কখনো commit নয় (`.env.example` দেখুন)।
 - অর্থ integer (সর্বনিম্ন একক); ledger append-only।
 
-## Setup (পরে)
+## Setup
+
 ```bash
-npm i -g @nestjs/cli
-nest new . --package-manager npm
-# PostgreSQL + Redis চালু করে migration চালান
-npm run start:dev
+cd services/backend
+npm install
+cp .env.example .env        # DATABASE_URL ও JWT secret বসান
+npx prisma migrate deploy   # বা dev: npx prisma migrate dev
+npm run db:seed             # super admin, merchant, 500 key, demo customer
+npm run start:dev           # http://localhost:3000/v1
 ```
+
+Health check: `GET /v1/health`
+
+### Seed লগইন (শুধু local dev)
+| কে | phone | password |
+|---|---|---|
+| Super Admin | `01700000000` | `Admin@12345` |
+| Merchant Owner | `01811111111` | `Owner@12345` |
+
+### যাচাই করা flow (সব টেস্টেড)
+auth + RBAC · license-key quota (consume/release) · QR Device Owner enrollment ·
+consent capture · restriction request → **admin approval** → policy push ·
+device policy poll (emergency calls সবসময় চালু) · enrollment revoke → key slot ফেরত · append-only audit log।
+
+### মূল endpoints
+`POST /v1/auth/login` · `GET /v1/keys/summary` · `POST /v1/customers` ·
+`POST /v1/enrollment/start|/:id/consent|/:id/complete|/:id/revoke` ·
+`GET /v1/devices` · `POST /v1/devices/:id/restriction-requests` ·
+`POST /v1/restriction-requests/:id/approve` · `POST /v1/device/policy` (DPC) ·
+`GET /v1/audit-logs`। পূর্ণ তালিকা: `docs/api-spec.md`।
 
 ## .env.example
 ```

@@ -1,0 +1,428 @@
+// Finance Super Key — EMI Device Management Platform
+// Device-management tables are complete. EMI tables are reserved (Coming Soon)
+// at the bottom so adding them later needs no client changes.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────── enums ───────────────────────────────
+
+enum CompanyStatus {
+  active
+  suspended
+}
+
+enum MerchantStatus {
+  pending
+  active
+  suspended
+}
+
+enum UserType {
+  super_admin
+  admin_staff
+  merchant_staff
+  customer
+}
+
+enum AccountStatus {
+  active
+  disabled
+}
+
+enum StaffRole {
+  owner
+  manager
+  collector
+  staff
+}
+
+enum DeviceStatus {
+  active // normal, unrestricted
+  review // under review / payment due
+  restricted // server-approved restriction applied
+}
+
+enum EnrollmentMethod {
+  qr_device_owner
+  adb_device_owner
+}
+
+enum EnrollmentStatus {
+  pending
+  enrolled
+  revoked
+}
+
+enum PolicyType {
+  normal
+  reminder
+  restricted
+}
+
+enum RestrictionType {
+  restrict
+  release
+}
+
+enum RequestStatus {
+  pending
+  approved
+  rejected
+}
+
+enum SubscriptionPlan {
+  starter
+  business
+  enterprise
+}
+
+enum SubscriptionStatus {
+  active
+  past_due
+  canceled
+}
+
+enum KeyState {
+  available
+  consumed
+  released
+}
+
+enum NotificationChannel {
+  push
+  sms
+  email
+}
+
+enum NotificationStatus {
+  queued
+  sent
+  failed
+}
+
+enum TicketStatus {
+  open
+  in_progress
+  resolved
+}
+
+enum TicketPriority {
+  low
+  normal
+  high
+}
+
+enum AdminRole {
+  super_admin
+  finance_admin
+  support_admin
+  device_admin
+  merchant_manager
+  auditor
+}
+
+// ─────────────────────────────── tenancy ───────────────────────────────
+
+model Company {
+  id        String        @id @default(uuid())
+  name      String
+  status    CompanyStatus @default(active)
+  merchants Merchant[]
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  @@map("companies")
+}
+
+model Merchant {
+  id        String         @id @default(uuid())
+  companyId String         @map("company_id")
+  company   Company        @relation(fields: [companyId], references: [id])
+  name      String
+  dealerNo  String         @unique @map("dealer_no")
+  phone     String?
+  email     String?
+  address   String?
+  status    MerchantStatus @default(pending)
+
+  staff         MerchantStaff[]
+  customers     Customer[]
+  devices       Device[]
+  subscriptions Subscription[]
+  licenseKeys   LicenseKey[]
+  auditLogs     AuditLog[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@map("merchants")
+}
+
+model User {
+  id           String        @id @default(uuid())
+  phone        String        @unique
+  email        String?       @unique
+  passwordHash String        @map("password_hash")
+  fullName     String        @map("full_name")
+  userType     UserType      @map("user_type")
+  mfaEnabled   Boolean       @default(false) @map("mfa_enabled")
+  status       AccountStatus @default(active)
+
+  staffProfile  MerchantStaff?
+  customer      Customer?
+  adminRoles    UserAdminRole[]
+  refreshTokens RefreshToken[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @map("token_hash")
+  expiresAt DateTime @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model MerchantStaff {
+  id          String        @id @default(uuid())
+  merchantId  String        @map("merchant_id")
+  merchant    Merchant      @relation(fields: [merchantId], references: [id])
+  userId      String        @unique @map("user_id")
+  user        User          @relation(fields: [userId], references: [id])
+  role        StaffRole     @default(staff)
+  permissions Json          @default("[]")
+  status      AccountStatus @default(active)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([merchantId])
+  @@map("merchant_staff")
+}
+
+// ─────────────────────────────── customers & devices ───────────────────────────────
+
+model Customer {
+  id         String   @id @default(uuid())
+  merchantId String   @map("merchant_id")
+  merchant   Merchant @relation(fields: [merchantId], references: [id])
+  userId     String?  @unique @map("user_id")
+  user       User?    @relation(fields: [userId], references: [id])
+  fullName   String   @map("full_name")
+  phone      String
+  nidNo      String?  @map("nid_no")
+  address    String?
+  dealerNo   String?  @map("dealer_no")
+
+  devices Device[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([merchantId])
+  @@index([phone])
+  @@map("customers")
+}
+
+model Device {
+  id         String       @id @default(uuid())
+  merchantId String       @map("merchant_id")
+  merchant   Merchant     @relation(fields: [merchantId], references: [id])
+  customerId String       @map("customer_id")
+  customer   Customer     @relation(fields: [customerId], references: [id])
+  imeiHash   String       @map("imei_hash") // store a hash; mask for display
+  imeiMasked String       @map("imei_masked")
+  serial     String?
+  model      String
+  androidId  String?      @map("android_id")
+  status     DeviceStatus @default(active)
+
+  enrollment        DeviceEnrollment?
+  policies          DevicePolicy[]
+  restrictionReqs   RestrictionRequest[]
+  licenseKey        LicenseKey?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([merchantId, status])
+  @@index([imeiHash])
+  @@map("devices")
+}
+
+model DeviceEnrollment {
+  id                 String           @id @default(uuid())
+  deviceId           String           @unique @map("device_id")
+  device             Device           @relation(fields: [deviceId], references: [id])
+  method             EnrollmentMethod
+  provisioningToken  String           @map("provisioning_token") // signed, one-time
+  tokenExpiresAt     DateTime         @map("token_expires_at")
+  consentAt          DateTime?        @map("consent_at")
+  consentTextVersion String?          @map("consent_text_version")
+  signatureUrl       String?          @map("signature_url")
+  doc1Url            String?          @map("doc1_url")
+  doc2Url            String?          @map("doc2_url")
+  enrolledById       String?          @map("enrolled_by")
+  status             EnrollmentStatus @default(pending)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("device_enrollments")
+}
+
+model DevicePolicy {
+  id               String     @id @default(uuid())
+  deviceId         String     @map("device_id")
+  device           Device     @relation(fields: [deviceId], references: [id])
+  policyType       PolicyType @map("policy_type")
+  appliedAt        DateTime   @default(now()) @map("applied_at")
+  appliedById      String?    @map("applied_by")
+  reason           String?
+  serverDecisionId String?    @map("server_decision_id")
+  active           Boolean    @default(true)
+
+  @@index([deviceId, active])
+  @@map("device_policies")
+}
+
+model RestrictionRequest {
+  id          String          @id @default(uuid())
+  deviceId    String          @map("device_id")
+  device      Device          @relation(fields: [deviceId], references: [id])
+  merchantId  String          @map("merchant_id")
+  requestedBy String          @map("requested_by")
+  type        RestrictionType
+  reason      String
+  status      RequestStatus   @default(pending)
+  reviewedBy  String?         @map("reviewed_by")
+  reviewedAt  DateTime?       @map("reviewed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([merchantId, status])
+  @@map("restriction_requests")
+}
+
+// ─────────────────────────────── subscription & license keys ───────────────────────────────
+
+model Subscription {
+  id         String             @id @default(uuid())
+  merchantId String             @map("merchant_id")
+  merchant   Merchant           @relation(fields: [merchantId], references: [id])
+  plan       SubscriptionPlan   @default(starter)
+  status     SubscriptionStatus @default(active)
+  renewsAt   DateTime?          @map("renews_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([merchantId])
+  @@map("subscriptions")
+}
+
+model LicenseKey {
+  id         String   @id @default(uuid())
+  merchantId String   @map("merchant_id")
+  merchant   Merchant @relation(fields: [merchantId], references: [id])
+  batchId    String   @map("batch_id")
+  state      KeyState @default(available)
+  deviceId   String?  @unique @map("device_id")
+  device     Device?  @relation(fields: [deviceId], references: [id])
+  consumedAt DateTime? @map("consumed_at")
+  releasedAt DateTime? @map("released_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([merchantId, state])
+  @@map("license_keys")
+}
+
+// ─────────────────────────────── notifications, support, audit, RBAC ───────────────────────────────
+
+model Notification {
+  id         String              @id @default(uuid())
+  merchantId String?             @map("merchant_id")
+  userId     String?             @map("user_id")
+  channel    NotificationChannel
+  title      String
+  body       String
+  status     NotificationStatus  @default(queued)
+  sentAt     DateTime?           @map("sent_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("notifications")
+}
+
+model SupportTicket {
+  id         String         @id @default(uuid())
+  merchantId String?        @map("merchant_id")
+  customerId String?        @map("customer_id")
+  subject    String
+  body       String
+  status     TicketStatus   @default(open)
+  priority   TicketPriority @default(normal)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("support_tickets")
+}
+
+// Append-only. Never update or delete rows here.
+model AuditLog {
+  id         String    @id @default(uuid())
+  actorId    String?   @map("actor_id")
+  merchantId String?   @map("merchant_id")
+  merchant   Merchant? @relation(fields: [merchantId], references: [id])
+  action     String
+  entityType String?   @map("entity_type")
+  entityId   String?   @map("entity_id")
+  metadata   Json?
+  ip         String?
+  userAgent  String?   @map("user_agent")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@index([merchantId])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
+
+model UserAdminRole {
+  id     String    @id @default(uuid())
+  userId String    @map("user_id")
+  user   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   AdminRole
+
+  @@unique([userId, role])
+  @@map("user_admin_roles")
+}
+
+// ─────────────────────────────── EMI module (Coming Soon — reserved) ───────────────────────────────
+// Intentionally not implemented yet. When added, device status/restriction flow stays the same;
+// only the *reason* for a status change (a due installment) is introduced.
+//
+// model EmiAccount    { id, deviceId, financeAmount, downPayment, tenure, monthlyEmi, status, ... }
+// model EmiInstallment{ id, emiAccountId, seq, dueDate, amount, status, ... }
+// model Payment       { id, installmentId, amount, method, verifiedBy, ... }
+// model PaymentLedger { id, accountId, entryType, amount, balanceAfter, ... }  // append-only
