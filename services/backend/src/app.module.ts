@@ -13,6 +13,7 @@ import { KeysModule } from './keys/keys.module';
 import { EnrollmentModule } from './enrollment/enrollment.module';
 import { RestrictionModule } from './restriction/restriction.module';
 import { DeviceGatewayModule } from './device-gateway/device-gateway.module';
+import { ReportsModule } from './reports/reports.module';
 
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { PermissionsGuard } from './common/guards/permissions.guard';
@@ -34,6 +35,7 @@ import { AppController } from './app.controller';
     EnrollmentModule,
     RestrictionModule,
     DeviceGatewayModule,
+    ReportsModule,
   ],
   controllers: [AppController],
   providers: [
