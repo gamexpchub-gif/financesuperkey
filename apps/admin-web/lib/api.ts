@@ -75,8 +75,10 @@ async function request<T>(
 
   if (res.status === 401) {
     tokenStore.clear();
-    if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-      window.location.href = '/login';
+    const base = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
+    const loginPath = `${base}/login`;
+    if (typeof window !== 'undefined' && window.location.pathname !== loginPath) {
+      window.location.href = loginPath;
     }
     throw new ApiError(401, 'Session expired');
   }
