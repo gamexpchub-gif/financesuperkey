@@ -1,0 +1,15 @@
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  exclude:
+    - build/**
+    - android/**
+  errors:
+    # withOpacity / MaterialStateProperty are kept intentionally for
+    # compatibility with Flutter versions older than 3.27; silence the hint.
+    deprecated_member_use: ignore
+
+linter:
+  rules:
+    prefer_const_constructors: true
+    avoid_print: false
