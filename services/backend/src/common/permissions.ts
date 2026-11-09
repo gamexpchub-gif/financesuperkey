@@ -78,6 +78,7 @@ export const STAFF_ROLE_PERMISSIONS: Record<string, PermissionValue[]> = {
     Permission.EnrollmentRevoke, // owner may decommission its own devices
     Permission.KeyRead,
     Permission.KeyPurchase,
+    Permission.ReportRead, // merchant dashboard overview (own tenant)
   ],
   manager: [
     Permission.CustomerRead,
@@ -89,6 +90,7 @@ export const STAFF_ROLE_PERMISSIONS: Record<string, PermissionValue[]> = {
     Permission.EnrollmentComplete,
     Permission.EnrollmentRevoke,
     Permission.KeyRead,
+    Permission.ReportRead,
   ],
   collector: [
     Permission.CustomerRead,

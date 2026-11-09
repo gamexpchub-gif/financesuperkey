@@ -109,9 +109,17 @@ class Api {
       throw ApiException(401, 'Session expired — please sign in again');
     }
     if (res.statusCode >= 400) {
-      final msg = body is Map
-          ? (body['error']?['message'] ?? body['message'] ?? 'Request failed')
-          : 'Request failed (${res.statusCode})';
+      // Handles both NestJS default errors ({message, error, statusCode})
+      // and a nested {error: {message}} shape, without indexing a String.
+      dynamic msg = 'Request failed (${res.statusCode})';
+      if (body is Map) {
+        final err = body['error'];
+        if (err is Map && err['message'] != null) {
+          msg = err['message'];
+        } else if (body['message'] != null) {
+          msg = body['message'];
+        }
+      }
       throw ApiException(res.statusCode, msg is List ? msg.join(', ') : '$msg');
     }
     return body;
