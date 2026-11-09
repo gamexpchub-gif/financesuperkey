@@ -44,6 +44,17 @@
             android:excludeFromRecents="true"
             android:theme="@style/Theme.FinanceKey.Restricted" />
 
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true"
+            android:permission="android.permission.RECEIVE_BOOT_COMPLETED">
+            <intent-filter android:priority="1000">
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
         <!-- Device Owner admin component. Referenced by the QR provisioning
              payload as com.financesuperkey.dpc/.DeviceOwnerReceiver. -->
         <receiver

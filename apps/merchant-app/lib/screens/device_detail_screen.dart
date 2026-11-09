@@ -47,19 +47,24 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
     return out.reversed.toList();
   }
 
-  Future<void> _requestRestriction(String type) async {
+  Future<void> _toggleLock(bool lock) async {
     final reason = await showDialog<String>(
       context: context,
       builder: (_) => _ReasonDialog(
-        title: type == 'restrict' ? 'Request restriction' : 'Request release',
+        title: lock ? 'Lock device' : 'Unlock device',
       ),
     );
     if (reason == null || reason.trim().length < 3) return;
     try {
-      await Api.instance.requestRestriction(widget.device.id, type, reason.trim());
+      if (lock) {
+        await Api.instance.lockDevice(widget.device.id, reason.trim());
+      } else {
+        await Api.instance.unlockDevice(widget.device.id, reason.trim());
+      }
       if (!mounted) return;
-      showSnack(context, 'Request submitted to admin for review');
+      showSnack(context, lock ? 'Device locked' : 'Device unlocked');
       setState(() {
+        _status = lock ? 'restricted' : 'active';
         _timeline = Api.instance.deviceTimeline(widget.device.id);
       });
     } catch (e) {
@@ -131,30 +136,28 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
           ),
           const SizedBox(height: 20),
           if (restricted)
-            OutlinedButton.icon(
-              onPressed: () => _requestRestriction('release'),
+            FilledButton.icon(
+              onPressed: () => _toggleLock(false),
               icon: const Icon(Icons.lock_open, size: 18),
-              label: const Text('Request release'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Brand.good,
-                minimumSize: const Size.fromHeight(48),
-                side: const BorderSide(color: Brand.good),
+              label: const Text('Unlock device'),
+              style: FilledButton.styleFrom(
+                backgroundColor: Brand.good,
+                minimumSize: const Size.fromHeight(50),
               ),
             )
           else
-            OutlinedButton.icon(
-              onPressed: () => _requestRestriction('restrict'),
-              icon: const Icon(Icons.lock_outline, size: 18),
-              label: const Text('Request restriction'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Brand.crit,
-                minimumSize: const Size.fromHeight(48),
-                side: const BorderSide(color: Brand.crit),
+            FilledButton.icon(
+              onPressed: () => _toggleLock(true),
+              icon: const Icon(Icons.lock, size: 18),
+              label: const Text('Lock device'),
+              style: FilledButton.styleFrom(
+                backgroundColor: Brand.crit,
+                minimumSize: const Size.fromHeight(50),
               ),
             ),
           const SizedBox(height: 10),
           const Text(
-            'Merchants submit a request; the final decision and policy are applied by the admin on the server. Emergency calls stay on when restricted.',
+            'Lock/unlock is applied on the server with an audit entry. Emergency calls stay available when the device is locked.',
             style: TextStyle(fontSize: 11.5, color: Brand.faint, height: 1.5),
           ),
         ],

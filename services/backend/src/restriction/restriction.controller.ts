@@ -81,6 +81,30 @@ export class RestrictionController {
     return this.restriction.adminApply(user.id, deviceId, 'release', dto.reason);
   }
 
+  /** Merchant one-tap lock of its own device (no separate approval step). */
+  @Post('devices/:id/lock')
+  @RequirePermissions(Permission.DeviceLock)
+  lock(
+    @CurrentUser() user: AuthUser,
+    @Param('id') deviceId: string,
+    @Body() dto: ReasonDto,
+  ) {
+    const scope = user.isSuperAdmin ? null : user.merchantId ?? null;
+    return this.restriction.adminApply(user.id, deviceId, 'restrict', dto.reason, scope);
+  }
+
+  /** Merchant one-tap unlock of its own device. */
+  @Post('devices/:id/unlock')
+  @RequirePermissions(Permission.DeviceLock)
+  unlock(
+    @CurrentUser() user: AuthUser,
+    @Param('id') deviceId: string,
+    @Body() dto: ReasonDto,
+  ) {
+    const scope = user.isSuperAdmin ? null : user.merchantId ?? null;
+    return this.restriction.adminApply(user.id, deviceId, 'release', dto.reason, scope);
+  }
+
   @Post('restriction-requests/:id/approve')
   @RequirePermissions(Permission.DeviceRestrictApprove)
   approve(@CurrentUser() user: AuthUser, @Param('id') id: string) {

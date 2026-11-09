@@ -254,6 +254,15 @@ class Api {
     });
   }
 
+  /// One-tap lock/unlock of the merchant's own device.
+  Future<void> lockDevice(String deviceId, String reason) async {
+    await post('/devices/$deviceId/lock', {'reason': reason});
+  }
+
+  Future<void> unlockDevice(String deviceId, String reason) async {
+    await post('/devices/$deviceId/unlock', {'reason': reason});
+  }
+
   Future<void> requestKeys(int quantity) async {
     await post('/keys/purchase-request', {'quantity': quantity});
   }

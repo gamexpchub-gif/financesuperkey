@@ -56,16 +56,32 @@ class PolicyController(private val context: Context) {
                 DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED
             )
 
-            // Financing protections (device owner, consented at enrollment):
-            // the customer cannot factory-reset or safe-boot out of management.
-            // These are reversible — removed when the device is decommissioned.
-            dpm.addUserRestriction(admin, UserManager.DISALLOW_FACTORY_RESET)
-            dpm.addUserRestriction(admin, UserManager.DISALLOW_ADD_USER)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                dpm.addUserRestriction(admin, UserManager.DISALLOW_SAFE_BOOT)
+            // Financing protections (standard Device Owner restrictions, applied
+            // only after consented enrollment, all reversed on decommission).
+            // These are documented Android MDM capabilities — not a bypass.
+            applyRestriction(UserManager.DISALLOW_FACTORY_RESET)
+            applyRestriction(UserManager.DISALLOW_ADD_USER)
+            applyRestriction(UserManager.DISALLOW_SAFE_BOOT)
+            // Stops re-enabling ADB/developer options to clear the owner.
+            applyRestriction(UserManager.DISALLOW_DEBUGGING_FEATURES)
+            applyRestriction(UserManager.DISALLOW_MODIFY_ACCOUNTS)
+
+            // The management app itself cannot be uninstalled.
+            try {
+                dpm.setUninstallBlocked(admin, context.packageName, true)
+            } catch (e: Exception) {
+                Log.w(TAG, "setUninstallBlocked: ${e.message}")
             }
         } catch (e: Exception) {
             Log.w(TAG, "onAdminEnabled: ${e.message}")
+        }
+    }
+
+    private fun applyRestriction(key: String) {
+        try {
+            dpm.addUserRestriction(admin, key)
+        } catch (e: Exception) {
+            Log.w(TAG, "restriction $key: ${e.message}")
         }
     }
 
@@ -73,11 +89,16 @@ class PolicyController(private val context: Context) {
     fun decommission() {
         if (!isDeviceOwner()) return
         try {
-            dpm.clearUserRestriction(admin, UserManager.DISALLOW_FACTORY_RESET)
-            dpm.clearUserRestriction(admin, UserManager.DISALLOW_ADD_USER)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                dpm.clearUserRestriction(admin, UserManager.DISALLOW_SAFE_BOOT)
+            for (key in listOf(
+                UserManager.DISALLOW_FACTORY_RESET,
+                UserManager.DISALLOW_ADD_USER,
+                UserManager.DISALLOW_SAFE_BOOT,
+                UserManager.DISALLOW_DEBUGGING_FEATURES,
+                UserManager.DISALLOW_MODIFY_ACCOUNTS,
+            )) {
+                try { dpm.clearUserRestriction(admin, key) } catch (_: Exception) {}
             }
+            try { dpm.setUninstallBlocked(admin, context.packageName, false) } catch (_: Exception) {}
             dpm.clearDeviceOwnerApp(context.packageName)
         } catch (e: Exception) {
             Log.w(TAG, "decommission: ${e.message}")

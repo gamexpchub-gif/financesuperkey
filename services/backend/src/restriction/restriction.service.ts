@@ -124,11 +124,16 @@ export class RestrictionService {
     deviceId: string,
     type: RestrictionType,
     reason: string,
+    scopeMerchantId?: string | null,
   ) {
     const device = await this.prisma.device.findUnique({
       where: { id: deviceId },
     });
     if (!device) throw new NotFoundException('Device not found');
+    // When a merchant acts, restrict to their own devices.
+    if (scopeMerchantId && device.merchantId !== scopeMerchantId) {
+      throw new NotFoundException('Device not found');
+    }
     if (type === 'restrict' && device.status === 'restricted') {
       throw new BadRequestException('Device is already restricted');
     }

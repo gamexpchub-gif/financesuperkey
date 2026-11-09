@@ -19,6 +19,7 @@ export const Permission = {
   DeviceRestrictRequest: 'device.restrict.request',
   DeviceRestrictReview: 'device.restrict.review',
   DeviceRestrictApprove: 'device.restrict.approve',
+  DeviceLock: 'device.lock', // merchant one-tap lock/unlock of own devices
 
   EnrollmentCreate: 'enrollment.create',
   EnrollmentComplete: 'enrollment.complete',
@@ -73,6 +74,7 @@ export const STAFF_ROLE_PERMISSIONS: Record<string, PermissionValue[]> = {
     Permission.CustomerUpdate,
     Permission.DeviceRead,
     Permission.DeviceRestrictRequest,
+    Permission.DeviceLock,
     Permission.EnrollmentCreate,
     Permission.EnrollmentComplete,
     Permission.EnrollmentRevoke, // owner may decommission its own devices
@@ -86,6 +88,7 @@ export const STAFF_ROLE_PERMISSIONS: Record<string, PermissionValue[]> = {
     Permission.CustomerUpdate,
     Permission.DeviceRead,
     Permission.DeviceRestrictRequest,
+    Permission.DeviceLock,
     Permission.EnrollmentCreate,
     Permission.EnrollmentComplete,
     Permission.EnrollmentRevoke,
