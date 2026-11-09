@@ -1,5 +1,6 @@
 package com.financesuperkey.dpc
 
+import android.Manifest
 import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.content.Intent
@@ -41,6 +42,14 @@ class PolicyController(private val context: Context) {
                         DevicePolicyManager.LOCK_TASK_FEATURE_KEYGUARD
                 )
             }
+            // As Device Owner, auto-grant READ_PHONE_STATE so we can read the
+            // IMEI to report it (the customer consented to enrollment).
+            dpm.setPermissionGrantState(
+                admin,
+                context.packageName,
+                Manifest.permission.READ_PHONE_STATE,
+                DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED
+            )
         } catch (e: Exception) {
             Log.w(TAG, "onAdminEnabled: ${e.message}")
         }

@@ -36,6 +36,11 @@ class PolicyStore(context: Context) {
         get() = prefs.getBoolean(KEY_ENROLLED, false)
         set(value) = prefs.edit().putBoolean(KEY_ENROLLED, value).apply()
 
+    /** Whether we have already reported the hardware IMEI/model to the server. */
+    var infoReported: Boolean
+        get() = prefs.getBoolean(KEY_INFO, false)
+        set(value) = prefs.edit().putBoolean(KEY_INFO, value).apply()
+
     val isRestricted: Boolean get() = policyType == "restricted"
 
     companion object {
@@ -45,6 +50,7 @@ class PolicyStore(context: Context) {
         private const val KEY_REASON = "reason"
         private const val KEY_CONTACT = "contact"
         private const val KEY_ENROLLED = "enrolled"
+        private const val KEY_INFO = "info_reported"
 
         // Overridable by the QR provisioning bundle (com.financesuperkey.API_BASE).
         const val DEFAULT_API_BASE = "https://admin.deencircle.online/financekey/api/v1"

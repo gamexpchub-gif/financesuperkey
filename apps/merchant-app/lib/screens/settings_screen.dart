@@ -13,6 +13,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _url;
+  late final TextEditingController _apk;
   bool _testing = false;
   bool? _ok;
 
@@ -20,11 +21,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _url = TextEditingController(text: Api.instance.baseUrl);
+    _apk = TextEditingController(text: Api.instance.apkUrl);
   }
 
   @override
   void dispose() {
     _url.dispose();
+    _apk.dispose();
     super.dispose();
   }
 
@@ -44,8 +47,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _save() async {
     await Api.instance.setBaseUrl(_url.text);
+    await Api.instance.setApkUrl(_apk.text);
     if (!mounted) return;
-    showSnack(context, 'Server address saved');
+    showSnack(context, 'Settings saved');
     Navigator.of(context).pop();
   }
 
@@ -123,7 +127,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ],
-          const SizedBox(height: 20),
+          const SizedBox(height: 22),
+          const Text('Customer app (Finance Key) download URL',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Brand.muted)),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _apk,
+            keyboardType: TextInputType.url,
+            autocorrect: false,
+            decoration: const InputDecoration(
+              hintText: 'https://host/…/finance-key.apk',
+              prefixIcon: Icon(Icons.download, size: 20),
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text('Shown as a QR in the enroll screen so customers can scan to install the app.',
+              style: TextStyle(fontSize: 11.5, color: Brand.faint, height: 1.4)),
+          const SizedBox(height: 22),
           FilledButton(onPressed: _save, child: const Text('Save')),
           const SizedBox(height: 10),
           TextButton(

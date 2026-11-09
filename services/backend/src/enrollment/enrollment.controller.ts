@@ -14,8 +14,8 @@ import { AuthUser } from '../common/types';
 
 class StartEnrollmentDto {
   @IsString() customerId!: string;
-  @IsString() @MinLength(2) model!: string;
-  @IsString() @MinLength(6) imei!: string;
+  @IsOptional() @IsString() model?: string;
+  @IsOptional() @IsString() imei?: string;
   @IsOptional() @IsString() serial?: string;
   @IsEnum(EnrollmentMethod) method!: EnrollmentMethod;
 }

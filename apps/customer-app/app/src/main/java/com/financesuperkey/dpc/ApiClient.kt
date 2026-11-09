@@ -41,6 +41,16 @@ class ApiClient(private val store: PolicyStore) {
         return post("/device/heartbeat", body) != null
     }
 
+    /** Reports the hardware IMEI / model / serial so the merchant never types them. */
+    fun reportInfo(imei: String?, model: String?, serial: String?): Boolean {
+        val token = store.provisioningToken ?: return false
+        val body = JSONObject().put("provisioningToken", token)
+        if (!imei.isNullOrBlank()) body.put("imei", imei)
+        if (!model.isNullOrBlank()) body.put("model", model)
+        if (!serial.isNullOrBlank()) body.put("serial", serial)
+        return post("/device/report-info", body) != null
+    }
+
     fun ackPolicy(serverDecisionId: String?): Boolean {
         val token = store.provisioningToken ?: return false
         val body = JSONObject().put("provisioningToken", token)

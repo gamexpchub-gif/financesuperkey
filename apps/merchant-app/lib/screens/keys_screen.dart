@@ -11,16 +11,16 @@ class KeysScreen extends StatefulWidget {
 }
 
 class _KeysScreenState extends State<KeysScreen> {
-  Future<KeySummary>? _future;
+  Future<Overview>? _future;
 
   @override
   void initState() {
     super.initState();
-    _future = Api.instance.keySummary();
+    _future = Api.instance.overview();
   }
 
   Future<void> _refresh() async {
-    setState(() => _future = Api.instance.keySummary());
+    setState(() => _future = Api.instance.overview());
     await _future;
   }
 
@@ -47,7 +47,7 @@ class _KeysScreenState extends State<KeysScreen> {
       appBar: AppBar(title: const Text('License Keys')),
       body: RefreshIndicator(
         onRefresh: _refresh,
-        child: FutureBuilder<KeySummary>(
+        child: FutureBuilder<Overview>(
           future: _future,
           builder: (context, snap) {
             if (snap.connectionState == ConnectionState.waiting) {
@@ -58,7 +58,8 @@ class _KeysScreenState extends State<KeysScreen> {
                   child: Text('${snap.error}',
                       style: const TextStyle(color: Brand.muted)));
             }
-            final k = snap.data!;
+            final o = snap.data!;
+            final k = o.keys;
             final pct = k.total == 0 ? 0 : ((k.consumed / k.total) * 100).round();
             return ListView(
               padding: const EdgeInsets.all(16),
@@ -84,6 +85,22 @@ class _KeysScreenState extends State<KeysScreen> {
                             ],
                           ),
                         ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const SectionHeader('Devices'),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    child: Row(
+                      children: [
+                        _dstat('${o.devicesActive}', 'Open', Brand.good),
+                        _vline(),
+                        _dstat('${o.devicesReview}', 'Review', Brand.warn),
+                        _vline(),
+                        _dstat('${o.devicesRestricted}', 'Locked', Brand.crit),
                       ],
                     ),
                   ),
@@ -123,6 +140,18 @@ class _KeysScreenState extends State<KeysScreen> {
       ),
     );
   }
+
+  Widget _dstat(String value, String label, Color c) => Expanded(
+        child: Column(
+          children: [
+            Text(value, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: c)),
+            const SizedBox(height: 2),
+            Text(label, style: const TextStyle(fontSize: 12, color: Brand.muted)),
+          ],
+        ),
+      );
+
+  Widget _vline() => Container(width: 1, height: 36, color: Brand.line);
 
   Widget _kq(String label, int value, Color c) => Expanded(
         child: Column(

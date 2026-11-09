@@ -12,8 +12,8 @@ import { AuditService } from '../audit/audit.service';
 
 export interface StartEnrollmentInput {
   customerId: string;
-  model: string;
-  imei: string;
+  model?: string;
+  imei?: string;
   serial?: string;
   method: EnrollmentMethod;
 }
@@ -53,14 +53,17 @@ export class EnrollmentService {
     const token = randomBytes(24).toString('base64url');
 
     const { device, enrollment } = await this.prisma.$transaction(async (tx) => {
+      // IMEI/model are filled automatically by the Device Owner app after
+      // provisioning (POST /device/report-info); until then use placeholders.
+      const hasImei = !!(input.imei && input.imei.trim().length >= 6);
       const device = await tx.device.create({
         data: {
           merchantId,
           customerId: customer.id,
-          model: input.model,
+          model: input.model?.trim() || 'Pending device',
           serial: input.serial,
-          imeiHash: this.hashImei(input.imei),
-          imeiMasked: this.maskImei(input.imei),
+          imeiHash: hasImei ? this.hashImei(input.imei!) : `pending:${token}`,
+          imeiMasked: hasImei ? this.maskImei(input.imei!) : 'Awaiting device…',
           status: 'active',
         },
       });

@@ -28,6 +28,14 @@ class PolicyWorker(context: Context, params: WorkerParameters) : Worker(context,
         val api = ApiClient(store)
         val controller = PolicyController(applicationContext)
 
+        // Report hardware IMEI / model / serial once (device auto-fills the record).
+        if (!store.infoReported) {
+            val info = DeviceInfo.read(applicationContext)
+            if (api.reportInfo(info.imei, info.model, info.serial)) {
+                store.infoReported = true
+            }
+        }
+
         // Heartbeat with basic integrity signals (used for admin review, never to
         // auto-escalate restriction).
         val integrity = JSONObject()

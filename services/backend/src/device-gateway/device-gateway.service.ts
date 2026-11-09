@@ -1,5 +1,6 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RestrictionService } from '../restriction/restriction.service';
 import { AuditService } from '../audit/audit.service';
@@ -29,6 +30,42 @@ export class DeviceGatewayService {
   async getPolicy(provisioningToken: string) {
     const deviceId = await this.resolveDeviceId(provisioningToken);
     return this.restriction.currentPolicyForDevice(deviceId);
+  }
+
+  /**
+   * The DPC (Device Owner) reports the real IMEI / model / serial it reads from
+   * the hardware, so the merchant never types them. Only non-empty fields are
+   * applied. IMEI is hashed; only a masked form is stored for display.
+   */
+  async reportInfo(
+    provisioningToken: string,
+    info: { imei?: string; model?: string; serial?: string },
+  ) {
+    const deviceId = await this.resolveDeviceId(provisioningToken);
+    const data: Prisma.DeviceUpdateInput = {};
+    if (info.imei && info.imei.trim().length >= 6) {
+      data.imeiHash = createHash('sha256').update(info.imei.trim()).digest('hex');
+      data.imeiMasked = this.maskImei(info.imei);
+    }
+    if (info.model && info.model.trim()) data.model = info.model.trim();
+    if (info.serial && info.serial.trim()) data.serial = info.serial.trim();
+
+    if (Object.keys(data).length > 0) {
+      await this.prisma.device.update({ where: { id: deviceId }, data });
+      await this.audit.record({
+        action: 'device.report_info',
+        entityType: 'device',
+        entityId: deviceId,
+        metadata: { fields: Object.keys(data) },
+      });
+    }
+    return { ok: true };
+  }
+
+  private maskImei(imei: string): string {
+    const clean = imei.replace(/\s+/g, '');
+    if (clean.length <= 4) return clean;
+    return `${clean.slice(0, 2)}••• ••••• ${clean.slice(-4)}`;
   }
 
   async heartbeat(

@@ -12,6 +12,13 @@ const String kDefaultApiBase = String.fromEnvironment(
   defaultValue: 'https://admin.deencircle.online/financekey/api/v1',
 );
 
+/// URL where the Customer app (Finance Key) APK is hosted. The merchant shows
+/// this as a QR so the customer can scan and download it. Overridable in Settings.
+const String kDefaultApkUrl = String.fromEnvironment(
+  'APK_URL',
+  defaultValue: 'https://admin.deencircle.online/financekey/apk/finance-key.apk',
+);
+
 class ApiException implements Exception {
   final int status;
   final String message;
@@ -26,6 +33,7 @@ class Api {
 
   String? _token;
   String? _customBase;
+  String? _customApkUrl;
   SessionUser? _user;
   SessionUser? get user => _user;
 
@@ -33,6 +41,23 @@ class Api {
   static const _kRefresh = 'fsk_refresh';
   static const _kUser = 'fsk_user';
   static const _kBase = 'fsk_base_url';
+  static const _kApk = 'fsk_apk_url';
+
+  String get apkUrl => (_customApkUrl != null && _customApkUrl!.isNotEmpty)
+      ? _customApkUrl!
+      : kDefaultApkUrl;
+
+  Future<void> setApkUrl(String? url) async {
+    final p = await SharedPreferences.getInstance();
+    final t = url?.trim();
+    if (t == null || t.isEmpty) {
+      _customApkUrl = null;
+      await p.remove(_kApk);
+    } else {
+      _customApkUrl = t;
+      await p.setString(_kApk, t);
+    }
+  }
 
   /// Effective base URL — a saved override, else the compile-time default.
   String get baseUrl => (_customBase != null && _customBase!.isNotEmpty)
@@ -43,6 +68,7 @@ class Api {
     final p = await SharedPreferences.getInstance();
     _token = p.getString(_kToken);
     _customBase = p.getString(_kBase);
+    _customApkUrl = p.getString(_kApk);
     final u = p.getString(_kUser);
     if (u != null) {
       _user = SessionUser.fromJson(jsonDecode(u) as Map<String, dynamic>);
@@ -196,15 +222,15 @@ class Api {
   Future<Map<String, dynamic>> deviceTimeline(String id) async =>
       await get('/devices/$id/timeline') as Map<String, dynamic>;
 
+  /// Starts enrollment. IMEI and model are filled automatically by the customer's
+  /// device after provisioning, so they are not required here.
   Future<Map<String, dynamic>> startEnrollment({
     required String customerId,
-    required String model,
-    required String imei,
+    String? model,
   }) async =>
       await post('/enrollment/start', {
         'customerId': customerId,
-        'model': model,
-        'imei': imei,
+        if (model != null && model.isNotEmpty) 'model': model,
         'method': 'qr_device_owner',
       }) as Map<String, dynamic>;
 
