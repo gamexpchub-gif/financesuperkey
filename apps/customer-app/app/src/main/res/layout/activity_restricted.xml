@@ -82,6 +82,15 @@
             android:backgroundTint="@color/white"
             android:textColor="@color/crit_dark" />
 
+        <Button
+            android:id="@+id/btnWifi"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:layout_marginTop="10dp"
+            android:text="@string/wifi_settings"
+            android:textColor="@color/white" />
+
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

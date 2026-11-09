@@ -23,6 +23,7 @@
     <string name="emergency_call">Emergency call</string>
     <string name="emergency_note">Emergency calling and essential functions remain available.</string>
     <string name="refresh_status">Refresh status</string>
+    <string name="wifi_settings">Wi-Fi settings</string>
 
     <!-- Registration -->
     <string name="your_details">Your details</string>

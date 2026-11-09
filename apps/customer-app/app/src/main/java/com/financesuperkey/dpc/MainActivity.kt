@@ -39,6 +39,9 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnDetails).setOnClickListener {
             startActivity(Intent(this, RegistrationActivity::class.java))
         }
+        findViewById<Button>(R.id.btnProvision).setOnClickListener {
+            startActivity(Intent(this, ProvisionActivity::class.java))
+        }
     }
 
     override fun onResume() {
@@ -71,7 +74,9 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<TextView>(R.id.contactValue).text = store.financeContact
 
-        // Once enrolled, the customer can fill in their own details.
+        // Not Device Owner yet → offer in-app setup. Enrolled → offer details.
+        findViewById<Button>(R.id.btnProvision).visibility =
+            if (!controller.isDeviceOwner()) View.VISIBLE else View.GONE
         findViewById<Button>(R.id.btnDetails).visibility =
             if (enrolled) View.VISIBLE else View.GONE
 

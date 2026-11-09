@@ -44,6 +44,16 @@ class RestrictedActivity : AppCompatActivity() {
             // Emergency dialer — never blocked.
             startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:")))
         }
+        findViewById<Button>(R.id.btnWifi).setOnClickListener {
+            // Only Wi-Fi settings are reachable while restricted.
+            try {
+                startActivity(Intent(android.provider.Settings.ACTION_WIFI_SETTINGS))
+            } catch (_: Exception) {
+                try {
+                    startActivity(Intent(android.provider.Settings.ACTION_WIRELESS_SETTINGS))
+                } catch (_: Exception) {}
+            }
+        }
         findViewById<Button>(R.id.btnRefresh).setOnClickListener {
             PolicyWorker.runNow(this)
         }

@@ -32,8 +32,12 @@ class PolicyController(private val context: Context) {
     fun onAdminEnabled() {
         if (!isDeviceOwner()) return
         try {
-            // Allow only this app to enter lock-task (kiosk) mode.
-            dpm.setLockTaskPackages(admin, arrayOf(context.packageName))
+            // Allow this app plus the system Settings in lock-task, so the
+            // customer can still reach Wi-Fi while the device is restricted.
+            dpm.setLockTaskPackages(
+                admin,
+                arrayOf(context.packageName, "com.android.settings")
+            )
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 // Keep global actions + system info available; emergency stays on.
                 dpm.setLockTaskFeatures(
