@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import '../theme.dart';
 import 'home_shell.dart';
+import 'settings_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -43,6 +44,19 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: [
+          IconButton(
+            tooltip: 'Server settings',
+            icon: const Icon(Icons.settings_outlined, color: Brand.muted),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            ),
+          ),
+        ],
+      ),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),

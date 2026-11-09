@@ -1,13 +1,13 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'models.dart';
 
-/// Base URL of the backend API.
-/// Override at run time, e.g.:
+/// Default base URL of the backend API, baked in at build time.
+/// Override at run time in the app's Settings screen, or at build time:
 ///   flutter run --dart-define=API_BASE=http://10.0.2.2:3000/v1
-/// (10.0.2.2 is how the Android emulator reaches the host machine's localhost.)
-const String kApiBase = String.fromEnvironment(
+const String kDefaultApiBase = String.fromEnvironment(
   'API_BASE',
   defaultValue: 'https://admin.deencircle.online/financekey/api/v1',
 );
@@ -25,19 +25,42 @@ class Api {
   static final Api instance = Api._();
 
   String? _token;
+  String? _customBase;
   SessionUser? _user;
   SessionUser? get user => _user;
 
   static const _kToken = 'fsk_token';
   static const _kRefresh = 'fsk_refresh';
   static const _kUser = 'fsk_user';
+  static const _kBase = 'fsk_base_url';
+
+  /// Effective base URL — a saved override, else the compile-time default.
+  String get baseUrl => (_customBase != null && _customBase!.isNotEmpty)
+      ? _customBase!
+      : kDefaultApiBase;
 
   Future<void> loadSession() async {
     final p = await SharedPreferences.getInstance();
     _token = p.getString(_kToken);
+    _customBase = p.getString(_kBase);
     final u = p.getString(_kUser);
     if (u != null) {
       _user = SessionUser.fromJson(jsonDecode(u) as Map<String, dynamic>);
+    }
+  }
+
+  Future<void> setBaseUrl(String? url) async {
+    final p = await SharedPreferences.getInstance();
+    final trimmed = url?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      _customBase = null;
+      await p.remove(_kBase);
+    } else {
+      // Normalise: drop a trailing slash.
+      _customBase = trimmed.endsWith('/')
+          ? trimmed.substring(0, trimmed.length - 1)
+          : trimmed;
+      await p.setString(_kBase, _customBase!);
     }
   }
 
@@ -57,7 +80,27 @@ class Api {
         if (_token != null) 'Authorization': 'Bearer $_token',
       };
 
-  Uri _uri(String path) => Uri.parse('$kApiBase$path');
+  Uri _uri(String path) => Uri.parse('$baseUrl$path');
+
+  /// Wraps an http call so connection/DNS failures become a clear message
+  /// instead of a raw SocketException.
+  Future<http.Response> _send(Future<http.Response> Function() call) async {
+    try {
+      return await call().timeout(const Duration(seconds: 20));
+    } on SocketException catch (e) {
+      final host = Uri.tryParse(baseUrl)?.host ?? 'the server';
+      if (e.osError?.errorCode == 7 ||
+          e.message.toLowerCase().contains('failed host lookup')) {
+        throw ApiException(
+            0, 'Can\'t find "$host". Check the server address in Settings and your internet connection.');
+      }
+      throw ApiException(0, 'Can\'t reach the server. Check your internet connection and try again.');
+    } on http.ClientException {
+      throw ApiException(0, 'Network error. Please try again.');
+    } catch (_) {
+      throw ApiException(0, 'Connection timed out. Please try again.');
+    }
+  }
 
   dynamic _decode(http.Response res) {
     final body = res.body.isEmpty ? null : jsonDecode(res.body);
@@ -75,21 +118,31 @@ class Api {
   }
 
   Future<dynamic> get(String path) async {
-    final res = await http.get(_uri(path), headers: _headers);
+    final res = await _send(() => http.get(_uri(path), headers: _headers));
     return _decode(res);
   }
 
   Future<dynamic> post(String path, [Map<String, dynamic>? body]) async {
-    final res = await http.post(_uri(path),
-        headers: _headers, body: body == null ? null : jsonEncode(body));
+    final res = await _send(() => http.post(_uri(path),
+        headers: _headers, body: body == null ? null : jsonEncode(body)));
     return _decode(res);
+  }
+
+  /// Lightweight connectivity probe for the Settings screen.
+  Future<bool> ping() async {
+    try {
+      final res = await _send(() => http.get(_uri('/health')));
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
   }
 
   // ---------- auth ----------
   Future<SessionUser> login(String identifier, String password) async {
-    final res = await http.post(_uri('/auth/login'),
+    final res = await _send(() => http.post(_uri('/auth/login'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'identifier': identifier, 'password': password}));
+        body: jsonEncode({'identifier': identifier, 'password': password})));
     final body = _decode(res) as Map<String, dynamic>;
     _token = body['access'] as String;
     _user = SessionUser.fromJson(body['user'] as Map<String, dynamic>);
@@ -150,8 +203,6 @@ class Api {
   Future<void> submitConsent(String enrollmentId) async {
     await post('/enrollment/$enrollmentId/consent', {
       'consentTextVersion': 'v1.0',
-      // The backend stores URLs; a real build uploads these to object storage
-      // first. Until that endpoint exists we record a placeholder reference.
       'signatureUrl': 'pending-upload://signature',
       'doc1Url': 'pending-upload://nid',
       'doc2Url': 'pending-upload://photo',
