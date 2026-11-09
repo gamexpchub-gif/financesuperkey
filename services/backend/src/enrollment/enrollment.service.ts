@@ -226,7 +226,7 @@ export class EnrollmentService {
   private buildQrPayload(token: string) {
     const apkLocation = this.config.get<string>(
       'DPC_APK_URL',
-      'https://downloads.financesuperkey.app/dpc/customer-app.apk',
+      'https://admin.deencircle.online/financekey/apk/finance-key.apk',
     );
     return {
       'android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME':
