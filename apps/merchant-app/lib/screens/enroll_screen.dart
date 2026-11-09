@@ -19,6 +19,7 @@ class _EnrollScreenState extends State<EnrollScreen> {
   final List<Offset?> _points = [];
   bool _saving = false;
   String? _provisioningQr; // JSON payload once enrollment started
+  String? _token; // raw enrollment token (for the ADB method)
 
   bool get _hasSignature => _points.any((p) => p != null);
 
@@ -38,9 +39,15 @@ class _EnrollScreenState extends State<EnrollScreen> {
       await Api.instance.submitConsent(enrollmentId);
       await Api.instance.completeEnrollment(enrollmentId);
       final payload = res['qrPayload'];
+      String? token;
+      try {
+        token = payload['android.app.extra.PROVISIONING_ADMIN_EXTRAS_BUNDLE']
+            ['com.financesuperkey.PROVISIONING_TOKEN'] as String?;
+      } catch (_) {}
       if (!mounted) return;
       setState(() {
         _provisioningQr = jsonEncode(payload);
+        _token = token;
         _step = 2;
       });
       showSnack(context, 'Device added · 1 key used');
@@ -253,6 +260,23 @@ class _EnrollScreenState extends State<EnrollScreen> {
             ),
           ]),
         ),
+        if (_token != null) ...[
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(color: Brand.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: Brand.line)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Enrollment token (for the ADB / computer method)',
+                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Brand.faint)),
+              const SizedBox(height: 6),
+              SelectableText(_token!,
+                  style: const TextStyle(fontSize: 13, color: Brand.ink, fontFamily: 'monospace')),
+              const SizedBox(height: 4),
+              const Text('Enter this in Finance Key on the phone after setting Device Owner.',
+                  style: TextStyle(fontSize: 11, color: Brand.muted)),
+            ]),
+          ),
+        ],
         const SizedBox(height: 16),
         _stepsCard(),
         const SizedBox(height: 16),
