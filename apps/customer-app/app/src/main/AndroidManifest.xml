@@ -28,6 +28,11 @@
         </activity>
 
         <activity
+            android:name=".RegistrationActivity"
+            android:exported="false"
+            android:theme="@style/Theme.FinanceKey" />
+
+        <activity
             android:name=".RestrictedActivity"
             android:exported="false"
             android:launchMode="singleTask"

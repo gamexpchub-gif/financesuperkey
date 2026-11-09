@@ -3,6 +3,7 @@ package com.financesuperkey.dpc
 import android.content.Intent
 import android.os.Bundle
 import android.text.InputType
+import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -35,6 +36,9 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnSupport).setOnClickListener {
             Toast.makeText(this, store.financeContact, Toast.LENGTH_LONG).show()
         }
+        findViewById<Button>(R.id.btnDetails).setOnClickListener {
+            startActivity(Intent(this, RegistrationActivity::class.java))
+        }
     }
 
     override fun onResume() {
@@ -66,6 +70,10 @@ class MainActivity : AppCompatActivity() {
             else getString(R.string.not_enrolled_detail)
 
         findViewById<TextView>(R.id.contactValue).text = store.financeContact
+
+        // Once enrolled, the customer can fill in their own details.
+        findViewById<Button>(R.id.btnDetails).visibility =
+            if (enrolled) View.VISIBLE else View.GONE
 
         // When device-owner but not yet linked to a server token, offer manual
         // enrollment (used for ADB provisioning and as a fallback to QR).

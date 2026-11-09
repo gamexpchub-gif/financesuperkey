@@ -23,4 +23,21 @@
     <string name="emergency_call">Emergency call</string>
     <string name="emergency_note">Emergency calling and essential functions remain available.</string>
     <string name="refresh_status">Refresh status</string>
+
+    <!-- Registration -->
+    <string name="your_details">Your details</string>
+    <string name="details_sub">Please fill in your details to complete device enrollment.</string>
+    <string name="full_name">Full name</string>
+    <string name="phone">Phone number</string>
+    <string name="nid">NID / Birth reg. (optional)</string>
+    <string name="dealer_no">Dealer number (optional)</string>
+    <string name="address">Address</string>
+    <string name="signature">Signature</string>
+    <string name="clear">Clear</string>
+    <string name="consent_checkbox">I consent to EMI device management and understand the device may be restricted for missed payments. Emergency calls always work.</string>
+    <string name="submit">Submit</string>
+    <string name="submitting">Submitting…</string>
+    <string name="details_saved">Details saved. Thank you!</string>
+    <string name="submit_failed">Could not submit. Check your connection and try again.</string>
+    <string name="complete_details">Complete your details</string>
 </resources>

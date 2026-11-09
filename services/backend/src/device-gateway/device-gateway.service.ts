@@ -62,6 +62,57 @@ export class DeviceGatewayService {
     return { ok: true };
   }
 
+  /**
+   * The customer fills their own details in the Finance Key app after setup.
+   * Updates the customer linked to this device, keyed by the device token.
+   */
+  async registerCustomer(
+    provisioningToken: string,
+    details: {
+      fullName?: string;
+      phone?: string;
+      address?: string;
+      nidNo?: string;
+      dealerNo?: string;
+      consent?: boolean;
+    },
+  ) {
+    const deviceId = await this.resolveDeviceId(provisioningToken);
+    const device = await this.prisma.device.findUnique({
+      where: { id: deviceId },
+      select: { customerId: true },
+    });
+    if (!device) throw new UnauthorizedException('Unknown device');
+
+    const data: Prisma.CustomerUpdateInput = {};
+    if (details.fullName?.trim()) data.fullName = details.fullName.trim();
+    if (details.phone?.trim()) data.phone = details.phone.trim();
+    if (details.address?.trim()) data.address = details.address.trim();
+    if (details.nidNo?.trim()) data.nidNo = details.nidNo.trim();
+    if (details.dealerNo?.trim()) data.dealerNo = details.dealerNo.trim();
+    if (Object.keys(data).length > 0) {
+      await this.prisma.customer.update({
+        where: { id: device.customerId },
+        data,
+      });
+    }
+
+    if (details.consent) {
+      await this.prisma.deviceEnrollment.updateMany({
+        where: { deviceId },
+        data: { consentAt: new Date(), consentTextVersion: 'app-v1.0' },
+      });
+    }
+
+    await this.audit.record({
+      action: 'device.register_customer',
+      entityType: 'device',
+      entityId: deviceId,
+      metadata: { fields: Object.keys(data), consent: !!details.consent },
+    });
+    return { ok: true };
+  }
+
   private maskImei(imei: string): string {
     const clean = imei.replace(/\s+/g, '');
     if (clean.length <= 4) return clean;

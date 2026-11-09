@@ -5,6 +5,7 @@ import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.UserManager
 import android.util.Log
 
 /**
@@ -50,8 +51,32 @@ class PolicyController(private val context: Context) {
                 Manifest.permission.READ_PHONE_STATE,
                 DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED
             )
+
+            // Financing protections (device owner, consented at enrollment):
+            // the customer cannot factory-reset or safe-boot out of management.
+            // These are reversible — removed when the device is decommissioned.
+            dpm.addUserRestriction(admin, UserManager.DISALLOW_FACTORY_RESET)
+            dpm.addUserRestriction(admin, UserManager.DISALLOW_ADD_USER)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                dpm.addUserRestriction(admin, UserManager.DISALLOW_SAFE_BOOT)
+            }
         } catch (e: Exception) {
             Log.w(TAG, "onAdminEnabled: ${e.message}")
+        }
+    }
+
+    /** Clears financing restrictions and relinquishes Device Owner. */
+    fun decommission() {
+        if (!isDeviceOwner()) return
+        try {
+            dpm.clearUserRestriction(admin, UserManager.DISALLOW_FACTORY_RESET)
+            dpm.clearUserRestriction(admin, UserManager.DISALLOW_ADD_USER)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                dpm.clearUserRestriction(admin, UserManager.DISALLOW_SAFE_BOOT)
+            }
+            dpm.clearDeviceOwnerApp(context.packageName)
+        } catch (e: Exception) {
+            Log.w(TAG, "decommission: ${e.message}")
         }
     }
 

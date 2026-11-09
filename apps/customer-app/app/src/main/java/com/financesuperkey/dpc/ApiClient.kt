@@ -51,6 +51,21 @@ class ApiClient(private val store: PolicyStore) {
         return post("/device/report-info", body) != null
     }
 
+    /** Customer submits their own details from the Finance Key app. */
+    fun registerCustomer(
+        fullName: String?, phone: String?, address: String?,
+        nidNo: String?, dealerNo: String?, consent: Boolean
+    ): Boolean {
+        val token = store.provisioningToken ?: return false
+        val body = JSONObject().put("provisioningToken", token).put("consent", consent)
+        if (!fullName.isNullOrBlank()) body.put("fullName", fullName)
+        if (!phone.isNullOrBlank()) body.put("phone", phone)
+        if (!address.isNullOrBlank()) body.put("address", address)
+        if (!nidNo.isNullOrBlank()) body.put("nidNo", nidNo)
+        if (!dealerNo.isNullOrBlank()) body.put("dealerNo", dealerNo)
+        return post("/device/register-customer", body) != null
+    }
+
     fun ackPolicy(serverDecisionId: String?): Boolean {
         val token = store.provisioningToken ?: return false
         val body = JSONObject().put("provisioningToken", token)
