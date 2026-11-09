@@ -42,5 +42,7 @@ dependencies {
     // App Manager technique). libadb-android is published via JitPack.
     implementation 'com.github.MuntashirAkon:libadb-android:3.0.0'
     implementation 'org.conscrypt:conscrypt-android:2.5.2'
-    implementation 'org.bouncycastle:bcpkix-jdk18on:1.78.1'
+    // Match the BouncyCastle variant that libadb-android pulls (jdk15to18) to
+    // avoid duplicate classes with bcprov-jdk18on.
+    implementation 'org.bouncycastle:bcpkix-jdk15to18:1.78'
 }
