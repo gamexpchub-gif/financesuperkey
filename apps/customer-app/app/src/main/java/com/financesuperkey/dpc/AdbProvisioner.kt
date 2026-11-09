@@ -5,7 +5,6 @@ import android.os.Build
 import io.github.muntashirakon.adb.AbsAdbConnectionManager
 import io.github.muntashirakon.adb.AdbStream
 import org.bouncycastle.asn1.x500.X500Name
-import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder
 import org.bouncycastle.jce.provider.BouncyCastleProvider
@@ -134,7 +133,7 @@ object AdbProvisioner {
             notBefore,
             notAfter,
             X500Principal(name.toString()),
-            SubjectPublicKeyInfo.getInstance(publicKey.encoded)
+            publicKey
         )
         val signer = JcaContentSignerBuilder("SHA256withRSA")
             .setProvider(BouncyCastleProvider.PROVIDER_NAME)
