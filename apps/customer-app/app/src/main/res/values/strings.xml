@@ -40,4 +40,18 @@
     <string name="details_saved">Details saved. Thank you!</string>
     <string name="submit_failed">Could not submit. Check your connection and try again.</string>
     <string name="complete_details">Complete your details</string>
+
+    <!-- In-app provisioning -->
+    <string name="setup_device_owner">Set up device</string>
+    <string name="provision_steps">1. Settings &gt; About phone &gt; tap Build number 7 times.\n2. Settings &gt; System &gt; Developer options &gt; Wireless debugging &gt; ON.\n3. On the Wireless debugging screen, read the port (the number after the colon in \"IP address &amp; Port\").\n4. Optional: tap \"Pair device with pairing code\" to get a pairing port and 6-digit code.\n5. Enter them below and tap the button.</string>
+    <string name="connect_port">Wireless debugging port</string>
+    <string name="connect_port_hint">e.g. 40011</string>
+    <string name="pair_label">Pairing (first time only)</string>
+    <string name="pair_port_hint">Pairing port (e.g. 37123)</string>
+    <string name="pair_code_hint">6-digit pairing code</string>
+    <string name="set_device_owner_btn">Set as Device Owner</string>
+    <string name="provisioning">Setting up… please wait.</string>
+    <string name="provision_ok">Device Owner set up successfully.</string>
+    <string name="provision_failed">Failed: %1$s</string>
+    <string name="setup_in_app">Set up in this app</string>
 </resources>

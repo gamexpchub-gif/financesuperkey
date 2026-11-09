@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/setup_device_owner"
+            android:textColor="@color/ink"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:paddingBottom="12dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/provision_steps"
+            android:textColor="@color/muted"
+            android:textSize="13sp"
+            android:lineSpacingExtra="4dp"
+            android:background="@drawable/card_bg"
+            android:padding="14dp"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/connect_port"
+            android:textColor="@color/muted"
+            android:textSize="12sp"
+            android:paddingBottom="6dp" />
+
+        <EditText
+            android:id="@+id/inConnectPort"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/connect_port_hint"
+            android:inputType="number"
+            android:background="@drawable/card_bg"
+            android:padding="14dp"
+            android:layout_marginBottom="14dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/pair_label"
+            android:textColor="@color/muted"
+            android:textSize="12sp"
+            android:paddingBottom="6dp" />
+
+        <EditText
+            android:id="@+id/inPairPort"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/pair_port_hint"
+            android:inputType="number"
+            android:background="@drawable/card_bg"
+            android:padding="14dp"
+            android:layout_marginBottom="10dp" />
+
+        <EditText
+            android:id="@+id/inPairCode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/pair_code_hint"
+            android:inputType="number"
+            android:background="@drawable/card_bg"
+            android:padding="14dp"
+            android:layout_marginBottom="18dp" />
+
+        <Button
+            android:id="@+id/btnProvision"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:text="@string/set_device_owner_btn"
+            android:backgroundTint="@color/navy"
+            android:textColor="@color/white" />
+
+        <TextView
+            android:id="@+id/status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:textColor="@color/muted"
+            android:textSize="12.5sp"
+            android:lineSpacingExtra="3dp" />
+    </LinearLayout>
+</ScrollView>
