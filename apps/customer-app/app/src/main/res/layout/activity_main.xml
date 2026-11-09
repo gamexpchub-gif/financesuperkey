@@ -111,16 +111,6 @@
         </LinearLayout>
 
         <Button
-            android:id="@+id/btnProvision"
-            android:layout_width="match_parent"
-            android:layout_height="52dp"
-            android:layout_marginTop="20dp"
-            android:text="@string/setup_in_app"
-            android:backgroundTint="@color/navy"
-            android:textColor="@color/white"
-            android:visibility="gone" />
-
-        <Button
             android:id="@+id/btnDetails"
             android:layout_width="match_parent"
             android:layout_height="52dp"
