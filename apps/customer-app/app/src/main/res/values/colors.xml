@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="navy">#FF243A74</color>
+    <color name="navy_ink">#FF2E4A91</color>
+    <color name="gold">#FFC2851A</color>
+    <color name="ink">#FF111727</color>
+    <color name="muted">#FF58607A</color>
+    <color name="faint">#FF8990A7</color>
+    <color name="line">#FFE6E9F2</color>
+    <color name="bg">#FFF5F7FC</color>
+    <color name="surface">#FFFFFFFF</color>
+    <color name="good">#FF167C3E</color>
+    <color name="good_soft">#FFE0F3E7</color>
+    <color name="crit">#FFB11F3B</color>
+    <color name="crit_dark">#FF7E142A</color>
+    <color name="white">#FFFFFFFF</color>
+</resources>
