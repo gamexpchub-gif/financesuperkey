@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import time
 
-from PySide6.QtCore import QPointF, QRectF, QRunnable, Qt, QThreadPool, QTimer
+from PySide6.QtCore import QPointF, QRectF, QRunnable, Qt, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QAction, QColor, QFont, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QButtonGroup, QCheckBox, QComboBox, QFileDialog, QGridLayout, QHBoxLayout, QHeaderView,
@@ -14,7 +15,7 @@ from PySide6.QtWidgets import (
 
 from icast import __app_name__, __version__
 from icast.backends.base import CastState, run_steps
-from icast.backends.wired import WiredBackend, recover_usb
+from icast.backends.wired import USB_HELPER, WiredBackend, apple_device_connected, recover_usb
 from icast.backends.wireless import WirelessBackend
 from icast.core import deps, devices, history
 from icast.core.config import config_dir, AUDIO_SINKS, FLIPS, FRAME_RATES, RESOLUTIONS, ROTATIONS, VIDEO_SINKS, AppSettings
@@ -246,21 +247,26 @@ class StatusStrip(GlassCard):
 
 
 class _Recover(QRunnable):
-    """Startup self-heal: bring usbmuxd back if an earlier session left it paused."""
+    """Self-heal: bring back usbmuxd / an iPhone left stuck by an earlier session."""
 
-    def __init__(self, log) -> None:
+    def __init__(self, log, done=None, force: bool = False) -> None:
         super().__init__()
-        self.log = log
+        self.log, self.done, self.force = log, done, force
 
     def run(self) -> None:
-        msg = recover_usb()
+        msg = recover_usb(force=self.force)
         if msg:
             safe_emit(self.log, msg)
+        if self.done is not None:
+            safe_emit(self.done)
 
 
 class MainWindow(QMainWindow):
+    recovered = Signal()
+
     def __init__(self) -> None:
         super().__init__()
+        self._auto_start_wired = False
         self.settings = AppSettings.load()
         self.ctrl = CastController()
         self.watcher = DeviceWatcher()
@@ -320,8 +326,8 @@ class MainWindow(QMainWindow):
         self._clock.start()
         self._scan_timer = QTimer(self, interval=3000, timeout=self.watcher.scan)
         self._scan_timer.start()
-        QThreadPool.globalInstance().start(_Recover(self.ctrl.log_line))
-        QTimer.singleShot(1500, self.watcher.scan)
+        self.recovered.connect(self._after_recover)
+        QThreadPool.globalInstance().start(_Recover(self.ctrl.log_line, self.recovered))
         self.go(0)
         self._on_state("idle", "")
 
@@ -761,6 +767,12 @@ class MainWindow(QMainWindow):
             return
         self.go(2)
         if not self.phones:
+            if os.path.exists(USB_HELPER) and apple_device_connected():
+                # Linux sees an iPhone that usbmuxd doesn't: reset it, then start automatically
+                self._auto_start_wired = True
+                self._on_state("starting", "Resetting the iPhone's USB connection…")
+                QThreadPool.globalInstance().start(_Recover(self.ctrl.log_line, self.recovered, force=True))
+                return
             self._on_state("error", "No iPhone detected over USB — connect the cable and unlock the phone.")
             return
         udid = self.settings.wired.preferred_udid
@@ -872,10 +884,29 @@ class MainWindow(QMainWindow):
         item = self.dev_list.currentItem()
         udid = item.data(Qt.UserRole) if item else ""
         backend = WiredBackend(self.settings.wired, udid=udid)
-        err = run_steps(backend.cleanup_steps() or [backend.reset_command()], backend, self._log, best_effort=True)
+        steps = backend.cleanup_steps()
+        if not steps:  # no iPhone listed (usbmuxd lost it): reset every connected iPhone
+            steps = [["sudo", "-n", USB_HELPER, "recover"]] if os.path.exists(USB_HELPER) else [backend.reset_command()]
+        err = run_steps(steps, backend, self._log, best_effort=True)
+        QTimer.singleShot(2500, self.watcher.scan)
         QMessageBox.information(self, __app_name__,
                                 ("USB reset done. Unplug the iPhone, plug it back in, unlock it, "
                                  "then press Start Wired." if not err else f"Reset USB failed:\n{err}"))
+
+    def _after_recover(self) -> None:
+        self.watcher.scan()
+        if self._auto_start_wired:
+            QTimer.singleShot(4000, self._auto_start_after_reset)
+
+    def _auto_start_after_reset(self) -> None:
+        if not self._auto_start_wired:
+            return
+        self._auto_start_wired = False
+        if self.phones and not self.ctrl.busy:
+            self.cast("wired")
+        else:
+            self._on_state("error", "The iPhone still isn't visible. Unplug the cable, plug it back in, "
+                                    "unlock the iPhone, then press Start Wired.")
 
     def _copy_log(self) -> None:
         text = self.log.toPlainText()
@@ -973,6 +1004,10 @@ class MainWindow(QMainWindow):
         self.dev_hint.setVisible(not phones)
         self.trust_btn.setEnabled(bool(phones))
         self._update_device_button()
+        if self._auto_start_wired and phones and not self.ctrl.busy:
+            self._auto_start_wired = False
+            QTimer.singleShot(0, lambda: self.cast("wired"))
+            return
         new = {p.udid for p in phones} - before
         for p in phones:
             if p.udid in new:

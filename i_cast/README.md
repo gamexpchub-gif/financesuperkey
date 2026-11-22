@@ -93,6 +93,7 @@ iCast resolves this per session:
 | Wired: stuck on “Preparing iPhone for capture…” | iCast now gives up after 25 s with advice. Unplug and re-plug the iPhone, unlock it, Start Wired again. The log contains qvh's detailed (`-v`) output — send it if it repeats |
 | Wired: “device not found, is it still connected? … /var/run/usbmuxd” | Old qvh. Run `scripts/install.sh` — it builds the pinned, patched qvh (`scripts/build-qvh.sh`) |
 | Wired: “interface claimed by usbfs while 'qvh' sets config” (dmesg) | usbmuxd is holding the iPhone. Run `scripts/install.sh` (installs the USB helper), re-plug, Start Wired |
+| Wired: no iPhone listed, but it is plugged in (`idevice_id -l` empty) | The iPhone was left in capture mode by an interrupted session. iCast detects this at startup / Start Wired / Reset USB and does a **software re-plug** (`/sys/…/authorized` 0→1) automatically. Manual: unplug and re-plug the cable |
 | Wired: no iPhone listed after a crash | iCast restores usbmuxd at startup; or run `sudo systemctl unmask --runtime usbmuxd && sudo systemctl start usbmuxd` |
 | Wired: “No permission to use the iPhone over USB” | Run `scripts/install.sh` again, then unplug and re-plug the iPhone |
 | Wired: “didn't switch into capture mode” / “Could not retrieve config” | Press **Reset USB** (or `icast reset-usb`), re-plug, unlock, Start Wired. iCast pauses usbmuxd and the iPhone tethering driver while casting, because Linux won't switch the iPhone's USB mode while they hold it |

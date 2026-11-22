@@ -94,8 +94,9 @@ def usbmuxd_masked() -> bool:
 
 
 def apple_device_connected() -> bool:
+    from icast.core.usbcap import _sysfs
     try:
-        for dev in Path("/sys/bus/usb/devices").iterdir():
+        for dev in (_sysfs() / "bus" / "usb" / "devices").iterdir():
             vid = dev / "idVendor"
             if vid.exists() and vid.read_text().strip() == "05ac":
                 return True
@@ -104,15 +105,29 @@ def apple_device_connected() -> bool:
     return False
 
 
-def recover_usb() -> str:
-    """Self-heal at startup: restart usbmuxd if iCast left it paused or stopped. Returns a log line or ''."""
-    if os.path.exists(USB_HELPER) and (usbmuxd_masked() or (apple_device_connected() and not usbmuxd_running())):
-        try:
-            subprocess.run(["sudo", "-n", USB_HELPER, "recover"], capture_output=True, timeout=20)
-        except (OSError, subprocess.TimeoutExpired):
-            return "Could not restart usbmuxd automatically. Run: sudo systemctl unmask --runtime usbmuxd"
-        return "Restored usbmuxd left paused by an earlier session"
-    return ""
+def iphone_stuck() -> bool:
+    """An iPhone is on the USB bus but usbmuxd can't see it (e.g. left in capture mode)."""
+    if not apple_device_connected():
+        return False
+    if not usbmuxd_running():
+        return True
+    from icast.core.devices import list_udids
+    return not list_udids()
+
+
+def recover_usb(force: bool = False) -> str:
+    """Self-heal: restart usbmuxd and software re-plug an iPhone that usbmuxd lost. Returns a log line or ''."""
+    if not os.path.exists(USB_HELPER):
+        return ""
+    if not (force or usbmuxd_masked() or iphone_stuck()):
+        return ""
+    try:
+        res = subprocess.run(["sudo", "-n", USB_HELPER, "recover"], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return "Could not reset the iPhone's USB automatically — unplug and re-plug the cable."
+    if res.returncode != 0:
+        return "Could not reset the iPhone's USB automatically — run scripts/install.sh, then re-plug the cable."
+    return "iPhone was stuck in an earlier USB mode — reset it (software re-plug) and restarted usbmuxd"
 
 
 def pulse_server_running() -> bool:

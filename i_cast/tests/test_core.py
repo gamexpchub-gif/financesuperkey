@@ -344,3 +344,20 @@ def test_usbcap_activate_gives_up_with_clear_message(tmp_path, monkeypatch):
     assert usbcap.activate("00008120-000915DC01B8201E", timeout=0.6, log=logs.append, sender=lambda d: None) == 6
     assert logs[-1].startswith("FATAL:") and "ignored" in logs[-1]
     assert usbcap.activate("FFFF", timeout=0.5, log=logs.append, sender=lambda d: None) == 3
+
+
+def test_usb_helper_software_replug(tmp_path):
+    import subprocess
+    from pathlib import Path
+    helper = Path(__file__).resolve().parents[1] / "scripts" / "icast-usb"
+    d = tmp_path / "bus/usb/devices/1-1"
+    d.mkdir(parents=True)
+    (d / "idVendor").write_text("05ac\n"); (d / "serial").write_text("00008120000915DC01B8201E\n")
+    (d / "authorized").write_text("1\n")
+    env = {"ICAST_SYSFS": str(tmp_path), "PATH": "/usr/bin:/bin"}
+    r = subprocess.run(["bash", str(helper), "restore", "00008120-000915DC01B8201E"], env=env,
+                       capture_output=True, text=True)
+    assert r.returncode == 0 and "re-plugged 1-1" in r.stdout
+    assert (d / "authorized").read_text().strip() == "1"            # 0 then back to 1
+    r = subprocess.run(["bash", str(helper), "recover"], env=env, capture_output=True, text=True)
+    assert r.returncode == 0 and "re-plugged 1-1" in r.stdout and "usbmuxd restored" in r.stdout

@@ -4,8 +4,9 @@
 # Linux refuses to switch an iPhone into its screen-capture USB configuration while any of its
 # interfaces is held (usbmuxd, or the ipheth tethering driver) -> qvh: "Could not retrieve config".
 #   prepare <udid>   pause usbmuxd and release the iPhone's USB interfaces
-#   restore <udid>   hand the iPhone back to the kernel drivers and restart usbmuxd
-#   recover          restart usbmuxd if a previous session could not restore it
+#   restore <udid>   software re-plug of the iPhone (clean state) and restart usbmuxd
+#   recover          restart usbmuxd and software re-plug any iPhone usbmuxd can't see
+#                    (e.g. one left in capture mode after iCast was killed mid-cast)
 # Installed to /usr/local/libexec/icast-usb (root-owned); iCast calls it with `sudo -n`.
 set -uo pipefail
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -14,29 +15,54 @@ SYSFS="${ICAST_SYSFS:-/sys}"
 
 cmd="${1:-}"
 udid="${2:-}"
-if [[ "$cmd" == "recover" ]]; then
-  # make sure usbmuxd is usable again (e.g. after iCast was killed mid-cast)
+
+apple_devices() {
+  local d
+  for d in "$SYSFS"/bus/usb/devices/*; do
+    [[ -f "$d/idVendor" && -f "$d/serial" ]] || continue
+    [[ "$(cat "$d/idVendor")" == "05ac" ]] && echo "$d"
+  done
+}
+
+find_dev() {
+  local d s
+  for d in $(apple_devices); do
+    s="$(tr -d '\0' < "$d/serial")"; s="${s//-/}"
+    [[ "${s^^}" == "$want" ]] && { echo "$d"; return 0; }
+  done
+  return 1
+}
+
+# Same effect as pulling the cable and plugging it back in: the kernel drops the device and
+# enumerates it from scratch, so the iPhone comes back in normal mode and usbmuxd picks it up.
+replug() {
+  local dev="$1"
+  [[ -w "$dev/authorized" ]] || return 0
+  echo 0 > "$dev/authorized" 2>/dev/null || return 0
+  sleep 1
+  echo 1 > "$dev/authorized" 2>/dev/null || true
+  echo "icast-usb: re-plugged $(basename "$dev")"
+}
+
+start_usbmuxd() {
   systemctl unmask --runtime usbmuxd.service >/dev/null 2>&1 || true
   systemctl start usbmuxd.service >/dev/null 2>&1 || true
+}
+
+if [[ "$cmd" == "recover" ]]; then
+  start_usbmuxd
+  for dev in $(apple_devices); do replug "$dev"; done
+  sleep 1
+  start_usbmuxd
   echo "icast-usb: usbmuxd restored"
   exit 0
 fi
+
 if [[ ! "$udid" =~ ^[0-9A-Fa-f-]{8,48}$ ]]; then
   echo "icast-usb: invalid device id" >&2
   exit 2
 fi
 want="${udid//-/}"; want="${want^^}"
-
-find_dev() {
-  local d s
-  for d in "$SYSFS"/bus/usb/devices/*; do
-    [[ -f "$d/idVendor" && -f "$d/serial" ]] || continue
-    [[ "$(cat "$d/idVendor")" == "05ac" ]] || continue
-    s="$(cat "$d/serial")"; s="${s//-/}"
-    [[ "${s^^}" == "$want" ]] && { echo "$d"; return 0; }
-  done
-  return 1
-}
 
 case "$cmd" in
   prepare)
@@ -58,10 +84,10 @@ case "$cmd" in
   restore)
     systemctl unmask --runtime usbmuxd.service >/dev/null 2>&1 || true
     if dev="$(find_dev)"; then
-      udevadm trigger --action=add "$dev" >/dev/null 2>&1 || true
-      for intf in "$dev":*; do udevadm trigger --action=add "$intf" >/dev/null 2>&1 || true; done
+      replug "$dev"
     fi
-    systemctl start usbmuxd.service >/dev/null 2>&1 || true
+    sleep 1
+    start_usbmuxd
     echo "icast-usb: iPhone returned to the system"
     ;;
   *)
