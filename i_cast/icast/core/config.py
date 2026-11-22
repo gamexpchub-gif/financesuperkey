@@ -1,0 +1,125 @@
+"""Persistent user settings stored as JSON in the XDG config directory."""
+
+from __future__ import annotations
+
+import json
+import os
+from dataclasses import asdict, dataclass, field, fields
+from pathlib import Path
+
+RESOLUTIONS = ("1280x720", "1920x1080", "2560x1440", "3840x2160")
+FRAME_RATES = (30, 60)
+ROTATIONS = ("none", "L", "R")  # UxPlay -r values
+FLIPS = ("none", "H", "V", "I")  # UxPlay -f values
+AUDIO_SINKS = ("auto", "pulsesink", "pipewiresink", "alsasink", "none")
+VIDEO_SINKS = ("auto", "autovideosink", "glimagesink", "xvimagesink", "waylandsink", "kmssink")
+
+
+def config_dir() -> Path:
+    base = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
+    return Path(base) / "icast"
+
+
+@dataclass
+class WirelessSettings:
+    receiver_name: str = "iCast"
+    append_hostname: bool = False
+    resolution: str = "1920x1080"
+    fps: int = 60
+    pin_enabled: bool = False
+    pin: str = ""
+    fullscreen: bool = False
+    rotation: str = "none"
+    flip: str = "none"
+    audio_sink: str = "auto"
+    video_sink: str = "auto"
+    low_latency: bool = True
+    fixed_ports: bool = False
+    base_port: int = 7100
+    restrict_to_trusted: bool = False
+    trusted_devices: list[str] = field(default_factory=list)
+    extra_args: str = ""
+
+
+@dataclass
+class WiredSettings:
+    preferred_udid: str = ""
+    auto_start_on_connect: bool = False
+    output: str = "window"  # window | record
+    record_dir: str = str(Path.home() / "Videos" / "iCast")
+    extra_args: str = ""
+
+
+@dataclass
+class AppSettings:
+    mode: str = "wireless"  # wireless | wired
+    wireless: WirelessSettings = field(default_factory=WirelessSettings)
+    wired: WiredSettings = field(default_factory=WiredSettings)
+    log_level: str = "info"
+
+    # ---------- persistence ----------
+    @classmethod
+    def path(cls) -> Path:
+        return config_dir() / "settings.json"
+
+    @classmethod
+    def load(cls, path: Path | None = None) -> "AppSettings":
+        path = path or cls.path()
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return cls()
+        return cls.from_dict(raw)
+
+    @classmethod
+    def from_dict(cls, raw: dict) -> "AppSettings":
+        def pick(dc, data):
+            names = {f.name for f in fields(dc)}
+            return dc(**{k: v for k, v in (data or {}).items() if k in names})
+
+        settings = cls()
+        if isinstance(raw, dict):
+            settings.mode = raw.get("mode", settings.mode)
+            settings.log_level = raw.get("log_level", settings.log_level)
+            try:
+                settings.wireless = pick(WirelessSettings, raw.get("wireless"))
+                settings.wired = pick(WiredSettings, raw.get("wired"))
+            except TypeError:
+                pass
+        settings.validate()
+        return settings
+
+    def save(self, path: Path | None = None) -> Path:
+        path = path or self.path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(asdict(self), indent=2), encoding="utf-8")
+        tmp.replace(path)
+        return path
+
+    def validate(self) -> None:
+        """Clamp invalid values back to safe defaults instead of failing."""
+        w = self.wireless
+        defaults = WirelessSettings()
+        if self.mode not in ("wireless", "wired"):
+            self.mode = "wireless"
+        if w.resolution not in RESOLUTIONS:
+            w.resolution = defaults.resolution
+        if w.fps not in FRAME_RATES:
+            w.fps = defaults.fps
+        if w.rotation not in ROTATIONS:
+            w.rotation = "none"
+        if w.flip not in FLIPS:
+            w.flip = "none"
+        if w.audio_sink not in AUDIO_SINKS:
+            w.audio_sink = "auto"
+        if w.video_sink not in VIDEO_SINKS:
+            w.video_sink = "auto"
+        if not (1024 <= int(w.base_port) <= 65000):
+            w.base_port = defaults.base_port
+        if w.pin and not (len(w.pin) == 4 and w.pin.isdigit()):
+            w.pin = ""
+        if not w.receiver_name.strip():
+            w.receiver_name = defaults.receiver_name
+        if self.wired.output not in ("window", "record"):
+            self.wired.output = "window"

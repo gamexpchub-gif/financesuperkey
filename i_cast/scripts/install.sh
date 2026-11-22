@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# iCast installer for Debian / Ubuntu / Linux Mint / Pop!_OS.
+# Installs: UxPlay (wireless), libimobiledevice + usbmuxd + qvh (wired), GStreamer, iCast itself.
+set -euo pipefail
+
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+say() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
+
+if ! command -v apt-get >/dev/null; then
+  echo "This script supports apt-based distros. See README.md for Fedora/Arch package names." >&2
+  exit 1
+fi
+
+say "Installing system packages (sudo)…"
+sudo apt-get update
+sudo apt-get install -y \
+  python3 python3-venv python3-pip pipx \
+  uxplay avahi-daemon libavahi-compat-libdnssd1 \
+  usbmuxd libimobiledevice-utils libusb-1.0-0 \
+  gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+  gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-gl gstreamer1.0-pulseaudio \
+  golang-go git ffmpeg pkg-config libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libusb-1.0-0-dev
+
+say "Enabling Avahi (AirPlay discovery) and usbmuxd…"
+sudo systemctl enable --now avahi-daemon || true
+sudo systemctl restart usbmuxd 2>/dev/null || true
+
+if ! command -v qvh >/dev/null; then
+  say "Building qvh (USB screen capture engine)…"
+  TMP="$(mktemp -d)"
+  git clone --depth 1 https://github.com/danielpaulus/quicktime_video_hack "$TMP/qvh"
+  (cd "$TMP/qvh" && go build -o qvh .)
+  sudo install -m 0755 "$TMP/qvh/qvh" /usr/local/bin/qvh
+  rm -rf "$TMP"
+fi
+
+say "Allowing USB access to iPhones without root…"
+sudo tee /etc/udev/rules.d/39-icast-iphone.rules >/dev/null <<'RULE'
+SUBSYSTEM=="usb", ATTR{idVendor}=="05ac", MODE="0666"
+RULE
+sudo udevadm control --reload-rules && sudo udevadm trigger || true
+
+if command -v ufw >/dev/null && sudo ufw status | grep -q active; then
+  say "Opening firewall for AirPlay (mDNS + ports 7100-7102)…"
+  sudo ufw allow 5353/udp
+  sudo ufw allow 7100:7102/tcp
+  sudo ufw allow 7100:7102/udp
+fi
+
+say "Installing iCast…"
+pipx install --force "$HERE"
+pipx ensurepath >/dev/null || true
+
+say "Adding desktop launcher…"
+mkdir -p "$HOME/.local/share/applications" "$HOME/.local/share/icons/hicolor/scalable/apps"
+install -m 0644 "$HERE/packaging/icast.desktop" "$HOME/.local/share/applications/icast.desktop"
+install -m 0644 "$HERE/packaging/icast.svg" "$HOME/.local/share/icons/hicolor/scalable/apps/icast.svg"
+
+say "Done! Run:  icast doctor   then   icast"
+echo "Tip: with 'Fixed ports' enabled in iCast, use base port 7100 to match the firewall rules."
