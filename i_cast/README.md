@@ -1,5 +1,7 @@
 # iCast — iPhone Screen Cast
 
+![iCast home screen](docs/screenshot-home.png)
+
 Mirror your iPhone screen to a Linux computer in two ways:
 
 | Mode | How it connects | Engine | Best for |
@@ -7,7 +9,8 @@ Mirror your iPhone screen to a Linux computer in two ways:
 | **Wireless · AirPlay** | Same Wi‑Fi. On iPhone: *Control Center → Screen Mirroring → iCast* | [UxPlay](https://github.com/FDH2/UxPlay) | No cable, presentations, TV-style use |
 | **Wired · USB** | Lightning / USB‑C cable | [qvh](https://github.com/danielpaulus/quicktime_video_hack) + libimobiledevice | Lowest delay, best picture, no Wi‑Fi needed |
 
-iCast is the control app: a dark desktop UI plus a CLI. It finds your devices,
+iCast is the control app: a premium neon/glass desktop UI (Home, Wireless Cast, Wired Cast,
+Connection History, Settings, About) plus a CLI. It finds your devices,
 builds the right engine command, watches the engine's state
 (Starting → Waiting → **Live**), shows a live timer, records over USB to MP4,
 and runs health checks.
@@ -74,7 +77,8 @@ Code layout:
 icast/
   core/       config (JSON settings), deps (doctor), devices (USB iPhones), process (engine supervisor)
   backends/   wireless.py (UxPlay), wired.py (qvh)
-  gui/        theme, controller (Qt signals/threads), main_window
+  core/history.py  connection history (JSON)
+  gui/        theme, icons (vector SVG set), widgets (custom-painted UI), controller, main_window
   cli.py      command-line interface
 ```
 

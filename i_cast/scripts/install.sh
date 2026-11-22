@@ -14,7 +14,7 @@ fi
 say "Installing system packages (sudo)…"
 sudo apt-get update
 sudo apt-get install -y \
-  python3 python3-venv python3-pip pipx \
+  python3 python3-venv python3-pip pipx fonts-inter \
   uxplay avahi-daemon libavahi-compat-libdnssd1 \
   usbmuxd libimobiledevice-utils libusb-1.0-0 \
   gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good \

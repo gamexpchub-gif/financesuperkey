@@ -9,13 +9,14 @@ import time
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
 
 from icast.backends.base import Backend, CastState
-from icast.core import devices
+from icast.core import devices, history
 from icast.core.process import ManagedProcess
 
 
 class CastController(QObject):
     state_changed = Signal(str, str)  # state, detail
     log_line = Signal(str)
+    history_changed = Signal()
     _line_from_thread = Signal(str)
     _exit_from_thread = Signal(int)
 
@@ -25,6 +26,10 @@ class CastController(QObject):
         self.proc: ManagedProcess | None = None
         self.state = CastState.IDLE
         self.started_at: float | None = None
+        self.mode = ""
+        self.device = ""
+        self._session_start = ""
+        self._streamed_s = 0.0
         self._line_from_thread.connect(self._on_line)
         self._exit_from_thread.connect(self._on_exit)
 
@@ -36,13 +41,18 @@ class CastController(QObject):
         if state == CastState.STREAMING and self.state != CastState.STREAMING:
             self.started_at = time.monotonic()
         elif state != CastState.STREAMING:
+            if self.started_at is not None:
+                self._streamed_s += time.monotonic() - self.started_at
             self.started_at = None
         self.state = state
         self.state_changed.emit(state.value, detail)
 
-    def start(self, backend: Backend) -> None:
+    def start(self, backend: Backend, mode: str = "", device: str = "") -> None:
         if self.active:
             return
+        self.mode, self.device = mode or backend.name, device
+        self._session_start = time.strftime("%Y-%m-%d %H:%M")
+        self._streamed_s = 0.0
         if not shutil.which(backend.binary):
             self._set(CastState.ERROR, f"'{backend.binary}' is not installed — open Diagnostics")
             return
@@ -80,10 +90,18 @@ class CastController(QObject):
         if mux and shutil.which("ffmpeg"):
             subprocess.run(mux, capture_output=True)
             self.log_line.emit(f"Recording saved: {mux[-1]}")
-        if self.state == CastState.ERROR or code not in (0, -2, -15, 130, 143):
+        failed = self.state == CastState.ERROR or code not in (0, -2, -15, 130, 143)
+        if failed:
             self._set(CastState.ERROR, f"Engine stopped unexpectedly (code {code}). See log.")
         else:
             self._set(CastState.IDLE, "")
+        result = "Failed" if failed else ("Completed" if self._streamed_s >= 1 else "No connection")
+        try:
+            history.append(history.SessionRecord(self._session_start, self.mode, self.device or "—",
+                                                 int(self._streamed_s), result))
+        except OSError:
+            pass
+        self.history_changed.emit()
 
 
 class _DeviceScan(QRunnable):

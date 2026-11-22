@@ -80,3 +80,15 @@ def test_managed_process_stream_and_stop():
 def test_cli_parser():
     a = build_parser().parse_args(["wireless", "--name", "TV", "--fps", "30"])
     assert a.name == "TV" and a.fps == 30
+
+
+def test_history_roundtrip(tmp_path):
+    from icast.core import history
+    p = tmp_path / "h.json"
+    history.append(history.SessionRecord("2026-11-22 10:00", "Wireless", "AirPlay client", 75, "Completed"), p)
+    history.append(history.SessionRecord("2026-11-22 11:00", "Wired", "Said's iPhone", 0, "No connection"), p)
+    recs = history.load(p)
+    assert [r.mode for r in recs] == ["Wired", "Wireless"]
+    assert history.fmt_duration(75) == "1:15" and history.fmt_duration(3725) == "1:02:05"
+    history.clear(p)
+    assert history.load(p) == []
