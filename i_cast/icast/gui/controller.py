@@ -48,6 +48,7 @@ class CastController(QObject):
     _companion_exit = Signal(int)
     _prepare_done = Signal(str)
     _cleanup_done = Signal(str)
+    _ready_done = Signal(str)
 
     NO_PICTURE_HINT_S = 20.0
     NO_PICTURE_HINT = ("No picture from the iPhone yet. Keep the iPhone unlocked, tap “Trust”, "
@@ -267,6 +268,10 @@ class CastController(QObject):
             line = self.backend.humanize(line)
         self.log_line.emit(line)
         if self.backend:
+            ready = self.backend.engine_ready_steps(line)
+            if ready:
+                QThreadPool.globalInstance().start(
+                    _StepRunner(ready, self.backend, self.log_line, self._ready_done, best_effort=True))
             new = self.backend.classify(line)
             if new == CastState.ERROR:
                 self._last_error = self.backend.explain(line)

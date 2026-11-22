@@ -235,6 +235,14 @@ class WiredBackend(Backend):
         # usbmuxd is paused during the cast; pairing was already verified by `qvh activate`.
         return {"QVH_SKIP_PAIR_CHECK": "1"} if self.udid and os.path.exists(USB_HELPER) else {}
 
+    def engine_ready_steps(self, line: str) -> list[list[str]]:
+        # qvh has switched the configuration and holds the capture interface: bring usbmuxd back so
+        # the iPhone sees a live usbmux host next to the capture session (as with QuickTime on macOS).
+        if "waiting for ping" in line and not self._resumed and self.udid and os.path.exists(USB_HELPER):
+            self._resumed = True
+            return [["sudo", "-n", USB_HELPER, "resume", self.udid]]
+        return []
+
     def cleanup_steps(self) -> list[list[str]]:
         if not self.udid:
             return []
@@ -293,6 +301,7 @@ class WiredBackend(Backend):
         # (x, y, width, height) of the monitor to fill; makes fullscreen work even without a WM.
         self.screen = screen
         self.last_recording: tuple[Path, Path] | None = None
+        self._resumed = False
 
     # ---------------------------------------------------------------- pipelines
     def video_pipeline(self, port: int) -> str:

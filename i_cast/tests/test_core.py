@@ -323,17 +323,21 @@ def test_usbcap_activate_waits_for_reconnect(tmp_path, monkeypatch):
     _fake_iphone(tmp_path, 10, NORMAL_DESC)
     sent = []
 
-    def sender(dev):           # the iPhone drops off the bus and comes back in capture mode
-        sent.append(dev.node.name)
+    def sender(dev, enable=True):   # the iPhone drops off the bus and comes back in the new mode
+        sent.append((dev.node.name, enable))
         shutil.rmtree(tmp_path / "bus/usb/devices/1-1")
-        threading.Timer(0.5, lambda: _fake_iphone(tmp_path, 11, CAPTURE_DESC)).start()
+        nxt = int(dev.node.name) + 1
+        threading.Timer(0.5, lambda: _fake_iphone(tmp_path, nxt, CAPTURE_DESC if enable else NORMAL_DESC)).start()
 
     logs = []
     assert usbcap.activate("00008120-000915DC01B8201E", timeout=5, log=logs.append, sender=sender) == 0
-    assert sent == ["010"] and any("re-connecting" in l for l in logs) and "Screen-capture mode is on" in logs[-1]
-    # already active -> no request sent again
+    assert sent == [("010", True)] and any("re-connecting" in l for l in logs)
+    assert "Screen-capture mode is on" in logs[-1]
+    # left over from an earlier session -> fresh session: off, then on again
+    logs.clear()
     assert usbcap.activate("00008120-000915DC01B8201E", timeout=5, log=logs.append, sender=sender) == 0
-    assert len(sent) == 1
+    assert sent[1:] == [("011", False), ("012", True)]
+    assert any("fresh one" in l for l in logs) and "Screen-capture mode is on" in logs[-1]
 
 
 def test_usbcap_activate_gives_up_with_clear_message(tmp_path, monkeypatch):
@@ -341,9 +345,10 @@ def test_usbcap_activate_gives_up_with_clear_message(tmp_path, monkeypatch):
     monkeypatch.setenv("ICAST_SYSFS", str(tmp_path))
     _fake_iphone(tmp_path, 10, NORMAL_DESC)
     logs = []
-    assert usbcap.activate("00008120-000915DC01B8201E", timeout=0.6, log=logs.append, sender=lambda d: None) == 6
+    assert usbcap.activate("00008120-000915DC01B8201E", timeout=0.6, log=logs.append,
+                           sender=lambda d, e=True: None) == 6
     assert logs[-1].startswith("FATAL:") and "ignored" in logs[-1]
-    assert usbcap.activate("FFFF", timeout=0.5, log=logs.append, sender=lambda d: None) == 3
+    assert usbcap.activate("FFFF", timeout=0.5, log=logs.append, sender=lambda d, e=True: None) == 3
 
 
 def test_usb_helper_software_replug(tmp_path):
@@ -361,3 +366,27 @@ def test_usb_helper_software_replug(tmp_path):
     assert (d / "authorized").read_text().strip() == "1"            # 0 then back to 1
     r = subprocess.run(["bash", str(helper), "recover"], env=env, capture_output=True, text=True)
     assert r.returncode == 0 and "re-plugged 1-1" in r.stdout and "usbmuxd restored" in r.stdout
+
+
+def test_wired_resumes_usbmuxd_once_capture_interface_is_held(monkeypatch):
+    import icast.backends.wired as wired
+    monkeypatch.setattr(wired.os.path, "exists", lambda p: p == wired.USB_HELPER)
+    b = WiredBackend(WiredSettings(), udid="00008120-000915DC01B8201E")
+    line = b.humanize('{"level":"info","msg":"Device \'00008120000915DC01B8201E\' USB connection ready, '
+                      'waiting for ping..","time":"x"}')
+    assert b.engine_ready_steps(line) == [["sudo", "-n", wired.USB_HELPER, "resume", "00008120-000915DC01B8201E"]]
+    assert b.engine_ready_steps(line) == []          # only once per session
+    assert b.engine_ready_steps("Gstreamer is running!") == []
+
+
+def test_usbcap_keeps_existing_capture_mode_if_it_cannot_switch_off(tmp_path, monkeypatch):
+    from icast.core import usbcap
+    monkeypatch.setenv("ICAST_SYSFS", str(tmp_path))
+    _fake_iphone(tmp_path, 10, CAPTURE_DESC)
+
+    def broken(dev, enable=True):
+        raise OSError(2, "No such file or directory")
+
+    logs = []
+    assert usbcap.activate("00008120-000915DC01B8201E", timeout=1, log=logs.append, sender=broken) == 0
+    assert "existing capture mode" in logs[-1]

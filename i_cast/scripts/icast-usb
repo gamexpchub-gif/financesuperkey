@@ -4,6 +4,8 @@
 # Linux refuses to switch an iPhone into its screen-capture USB configuration while any of its
 # interfaces is held (usbmuxd, or the ipheth tethering driver) -> qvh: "Could not retrieve config".
 #   prepare <udid>   pause usbmuxd and release the iPhone's USB interfaces
+#   resume <udid>    restart usbmuxd once qvh holds the capture interface (macOS-like: usbmux and
+#                    screen capture side by side; the iPhone may wait for a live usbmux host)
 #   restore <udid>   software re-plug of the iPhone (clean state) and restart usbmuxd
 #   recover          restart usbmuxd and software re-plug any iPhone usbmuxd can't see
 #                    (e.g. one left in capture mode after iCast was killed mid-cast)
@@ -81,6 +83,10 @@ case "$cmd" in
     done
     echo "icast-usb: iPhone ready for exclusive capture"
     ;;
+  resume)
+    start_usbmuxd
+    echo "icast-usb: usbmuxd resumed next to the capture session"
+    ;;
   restore)
     systemctl unmask --runtime usbmuxd.service >/dev/null 2>&1 || true
     if dev="$(find_dev)"; then
@@ -91,7 +97,7 @@ case "$cmd" in
     echo "icast-usb: iPhone returned to the system"
     ;;
   *)
-    echo "usage: icast-usb prepare|restore <udid> | recover" >&2
+    echo "usage: icast-usb prepare|resume|restore <udid> | recover" >&2
     exit 2
     ;;
 esac

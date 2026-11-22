@@ -103,11 +103,14 @@ def _iowr(type_char: str, nr: int, size: int) -> int:
 USBDEVFS_CONTROL = _iowr("U", 0, ctypes.sizeof(_CtrlTransfer))
 
 
-def send_enable_request(dev: UsbIPhone) -> None:
-    """Send the 'enable screen capture' vendor request. The iPhone may vanish mid-request: that's fine."""
+def send_enable_request(dev: UsbIPhone, enable: bool = True) -> None:
+    """Send the 'enable' (wIndex 2) or 'disable' (wIndex 0) screen-capture vendor request.
+
+    The iPhone may vanish mid-request (it re-connects): that's expected.
+    """
     fd = os.open(dev.node, os.O_RDWR)
     try:
-        req = _CtrlTransfer(0x40, 0x52, 0x00, 0x02, 0, 1000, None)
+        req = _CtrlTransfer(0x40, 0x52, 0x00, 0x02 if enable else 0x00, 0, 1000, None)
         try:
             fcntl.ioctl(fd, USBDEVFS_CONTROL, req)
         except OSError as exc:
@@ -117,23 +120,7 @@ def send_enable_request(dev: UsbIPhone) -> None:
         os.close(fd)
 
 
-def activate(udid: str, timeout: float = 15.0, log=print, sender=send_enable_request) -> int:
-    dev = find(udid)
-    if dev is None:
-        log("FATAL: iPhone not found on USB — unlock it and re-plug the cable")
-        return 3
-    if capture_mode(dev):
-        log("iPhone is already in screen-capture mode")
-        return 0
-    log(f"Switching iPhone (USB {dev.busnum}-{dev.devnum}) into screen-capture mode…")
-    try:
-        sender(dev)
-    except PermissionError:
-        log(f"FATAL: permission denied on {dev.node} — run scripts/install.sh and re-plug the iPhone")
-        return 4
-    except OSError as exc:
-        log(f"FATAL: could not talk to the iPhone over USB: {exc}")
-        return 5
+def _wait(udid: str, want_capture: bool, timeout: float, log) -> UsbIPhone | None:
     deadline = time.monotonic() + timeout
     seen_gone = False
     while time.monotonic() < deadline:
@@ -144,10 +131,55 @@ def activate(udid: str, timeout: float = 15.0, log=print, sender=send_enable_req
                 log("iPhone is re-connecting…")
             seen_gone = True
             continue
-        if capture_mode(now):
-            log(f"Screen-capture mode is on (USB {now.busnum}-{now.devnum})")
+        if capture_mode(now) == want_capture:
+            return now
+    return None
+
+
+def activate(udid: str, timeout: float = 15.0, log=print, sender=send_enable_request) -> int:
+    dev = find(udid)
+    if dev is None:
+        log("FATAL: iPhone not found on USB — unlock it and re-plug the cable")
+        return 3
+    if capture_mode(dev):
+        # Left over from an earlier session: the iPhone keeps its capture state across a software
+        # re-plug. Start a fresh capture session (like a first activation) — switch off, then on.
+        log("iPhone is still in screen-capture mode from an earlier session — starting a fresh one")
+        try:
+            sender(dev, False)
+        except OSError as exc:
+            log(f"Could not switch capture mode off ({exc}) — using the existing capture mode")
             return 0
-    if not seen_gone:
+        else:
+            off = _wait(udid, want_capture=False, timeout=8.0, log=log)
+            dev = off or find(udid)
+            if dev is None:
+                log("FATAL: iPhone did not come back after switching capture mode off — re-plug the cable")
+                return 3
+            if off is None:
+                log("iPhone kept capture mode on — using it as is")
+                return 0
+            log("Capture mode is off — switching it on again")
+    log(f"Switching iPhone (USB {dev.busnum}-{dev.devnum}) into screen-capture mode…")
+    try:
+        sender(dev, True)
+    except PermissionError:
+        log(f"FATAL: permission denied on {dev.node} — run scripts/install.sh and re-plug the iPhone")
+        return 4
+    except OSError as exc:
+        log(f"FATAL: could not talk to the iPhone over USB: {exc}")
+        return 5
+    gone = {"seen": False}
+
+    def track(msg: str) -> None:
+        gone["seen"] = True
+        log(msg)
+
+    now = _wait(udid, want_capture=True, timeout=timeout, log=track)
+    if now is not None:
+        log(f"Screen-capture mode is on (USB {now.busnum}-{now.devnum})")
+        return 0
+    if not gone["seen"]:
         log("FATAL: the iPhone ignored the screen-capture request — unlock it, tap Trust, re-plug and try again")
     else:
         log("FATAL: the iPhone re-connected without screen-capture mode — unlock it, re-plug and try again")

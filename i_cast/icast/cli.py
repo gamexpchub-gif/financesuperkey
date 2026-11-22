@@ -99,6 +99,11 @@ def _run_engine(backend, argv: list[str]) -> int:
 
     def on_line(line: str) -> None:
         line = backend.humanize(line)
+        ready = backend.engine_ready_steps(line)
+        if ready:
+            import threading
+            threading.Thread(target=run_steps, args=(ready, backend, lambda l: print(_c("dim", f"  {l}"))),
+                             kwargs={"best_effort": True}, daemon=True).start()
         new = backend.classify(line)
         if new and new != state["v"]:
             state["v"] = new

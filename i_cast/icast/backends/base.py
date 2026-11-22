@@ -45,6 +45,10 @@ class Backend(ABC):
         """Extra environment variables for the engine process."""
         return {}
 
+    def engine_ready_steps(self, line: str) -> list[list[str]]:
+        """Steps to run (once, in the background) when the engine prints ``line`` — e.g. it is ready."""
+        return []
+
     def preflight(self) -> str | None:
         """Plain-language blocker found before starting anything, else None."""
         return None
