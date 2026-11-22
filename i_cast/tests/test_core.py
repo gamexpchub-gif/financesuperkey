@@ -10,13 +10,13 @@ from icast.cli import build_parser
 
 
 def test_wireless_defaults_command():
-    argv = WirelessBackend(WirelessSettings()).build_command()
+    argv = WirelessBackend(WirelessSettings(), use_viewer=False).build_command()
     assert argv[:3] == ["uxplay", "-n", "iCast"]
     assert "-nh" in argv
-    assert argv[argv.index("-s") + 1] == "1920x1080@60"
-    assert argv[argv.index("-fps") + 1] == "60"
+    assert argv[argv.index("-s") + 1] == "1920x1080@120"      # auto without a known screen -> 1080p
+    assert argv[argv.index("-fps") + 1] == "120"
     assert ["-vsync", "no"] == argv[argv.index("-vsync"):argv.index("-vsync") + 2]
-    assert "-pin" not in argv and "-fs" not in argv
+    assert "-pin" not in argv and "-fs" in argv
 
 
 def test_wireless_full_options():
@@ -24,7 +24,7 @@ def test_wireless_full_options():
                          rotation="R", flip="H", audio_sink="none", video_sink="glimagesink",
                          fixed_ports=True, base_port=7100, restrict_to_trusted=True,
                          trusted_devices=["AA:BB"], extra_args="-d")
-    b = WirelessBackend(s)
+    b = WirelessBackend(s, use_viewer=False)
     argv = b.build_command()
     for flag in (["-fs"], ["-pin", "1234"], ["-r", "R"], ["-f", "H"], ["-as", "0"],
                  ["-vs", "glimagesink"], ["-p", "7100"], ["-restrict"], ["-allow", "AA:BB"], ["-d"]):
@@ -79,8 +79,8 @@ def test_wired_audio_fallback(monkeypatch):
 
 def test_settings_migrate_wired_to_fullscreen():
     old = AppSettings.from_dict({"wired": {"output": "window"}})  # v1 file
-    assert old.wired.output == "fullscreen" and old.settings_version == 2
-    kept = AppSettings.from_dict({"settings_version": 2, "wired": {"output": "window"}})
+    assert old.wired.output == "fullscreen" and old.settings_version == 3
+    kept = AppSettings.from_dict({"settings_version": 3, "wired": {"output": "window"}})
     assert kept.wired.output == "window"
 
 
@@ -100,7 +100,7 @@ def test_settings_roundtrip_and_validation(tmp_path):
     loaded = AppSettings.load(p)
     assert loaded.mode == "wired" and loaded.wireless.receiver_name == "Said's Mac"
     bad = AppSettings.from_dict({"mode": "x", "wireless": {"fps": 7, "pin": "12ab", "resolution": "1x1", "bogus": 1}})
-    assert bad.mode == "wireless" and bad.wireless.fps == 60 and bad.wireless.pin == ""
+    assert bad.mode == "wireless" and bad.wireless.fps == 120 and bad.wireless.pin == ""
     assert AppSettings.load(tmp_path / "missing.json").mode == "wireless"
 
 
@@ -425,7 +425,8 @@ def test_wired_airplay_backend(tmp_path):
     assert "Personal Hotspot" in b.preflight()
     b = WiredAirPlayBackend(WirelessSettings(), link_finder=lambda: UsbLink("enx1", None))
     assert "no address yet" in b.preflight()
-    b = WiredAirPlayBackend(WirelessSettings(fullscreen=False), link_finder=lambda: UsbLink("enx1", "172.20.10.2"))
+    b = WiredAirPlayBackend(WirelessSettings(fullscreen=False), link_finder=lambda: UsbLink("enx1", "172.20.10.2"),
+                            use_viewer=False)
     assert b.preflight() is None
     argv = b.build_command()
     assert argv[0] == "uxplay" and "-fs" in argv and ["-vsync", "no"] == argv[argv.index("-vsync"):argv.index("-vsync") + 2]
@@ -456,3 +457,28 @@ def test_main_window_builds_every_page(tmp_path, monkeypatch):
     assert w._qvh_only[0].isVisibleTo(w) or True
     w.ctrl.shutdown()
     w.deleteLater()
+
+
+def test_airplay_renders_through_icast_viewer_so_landscape_fills_the_screen():
+    b = WirelessBackend(WirelessSettings(rotation="R", flip="H"), screen=(0, 0, 2560, 1440), use_viewer=True)
+    argv = b.build_command()
+    # the iPhone sizes the picture by height: ask for this monitor's height, at 120 Hz
+    assert argv[argv.index("-s") + 1] == "2560x1440@120" and argv[argv.index("-fps") + 1] == "120"
+    vrtp = argv[argv.index("-vrtp") + 1]
+    assert vrtp == f"config-interval=-1 ! udpsink host=127.0.0.1 port={b.port} sync=false"
+    assert "-fs" not in argv and "-r" not in argv           # the viewer does fullscreen/rotation now
+    (view,) = b.companions()
+    assert view[-1] == str(b.sdp) and f"m=video {b.port} RTP/AVP 96" in b.sdp.read_text()
+    vf = view[view.index("-vf") + 1]
+    assert vf == "hflip,transpose=1,setpts=0"
+    assert ["-x", "2560"] == view[view.index("-x"):view.index("-x") + 2] and "-fs" in view
+    assert b.classify("[viewer] Input #0, sdp, from '/run/user/1000/icast.sdp':") == CastState.STREAMING
+    b.sdp.unlink()
+
+
+def test_settings_v3_migration_auto_fit_and_120fps():
+    old = AppSettings.from_dict({"settings_version": 2,
+                                 "wireless": {"resolution": "1920x1080", "fps": 60, "fullscreen": False}})
+    assert (old.wireless.resolution, old.wireless.fps, old.wireless.fullscreen) == ("auto", 120, True)
+    custom = AppSettings.from_dict({"settings_version": 3, "wireless": {"resolution": "1280x720", "fps": 30}})
+    assert (custom.wireless.resolution, custom.wireless.fps) == ("1280x720", 30)

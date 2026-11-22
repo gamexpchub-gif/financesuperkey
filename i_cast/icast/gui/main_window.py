@@ -30,8 +30,8 @@ from icast.gui.widgets import (
 
 PAGES = ("Home", "Wireless Cast", "Wired Cast", "Connection History", "Settings", "About")
 NAV_ICONS = ("home", "wifi", "cable", "history", "settings", "info")
-RES_LABEL = {"1280x720": "720p", "1920x1080": "1080p", "2560x1440": "1440p", "3840x2160": "4K"}
-HD_CHIP = {"1280x720": "HD\n720P", "1920x1080": "HD\n1080P", "2560x1440": "QHD\n1440P", "3840x2160": "Ultra HD\n4K"}
+RES_LABEL = {"auto": "Auto (fills screen)", "1280x720": "720p", "1920x1080": "1080p", "2560x1440": "1440p", "3840x2160": "4K"}
+HD_CHIP = {"auto": "Full HD+\nAuto fit", "1280x720": "HD\n720P", "1920x1080": "HD\n1080P", "2560x1440": "QHD\n1440P", "3840x2160": "Ultra HD\n4K"}
 
 HELP_TEXT = """<h3>Quick help</h3>
 <p><b>Wireless:</b> keep the iPhone and this computer on the same Wi‑Fi, press <i>Start Wireless</i>, then on the
@@ -452,7 +452,7 @@ class MainWindow(QMainWindow):
         self.w_res = combo(RESOLUTIONS, w.resolution)
         self.w_res.currentTextChanged.connect(self._sync_resolution)
         self.w_fps = combo(FRAME_RATES, w.fps)
-        self.w_full = QCheckBox("Open the mirror window in fullscreen")
+        self.w_full = QCheckBox("Fullscreen (landscape apps and games fill the screen automatically)")
         self.w_full.setChecked(w.fullscreen)
         self.w_lowlat = QCheckBox("Low-latency mode")
         self.w_lowlat.setChecked(w.low_latency)
@@ -777,12 +777,13 @@ class MainWindow(QMainWindow):
         self.settings.mode = mode
         if mode == "wireless":
             self.go(1)
-            self.ctrl.start(WirelessBackend(self.settings.wireless), "Wireless", "AirPlay client")
+            self.ctrl.start(WirelessBackend(self.settings.wireless, screen=self._screen_rect()),
+                            "Wireless", "AirPlay client")
             return
         self.go(2)
         if self.settings.wired.engine == "airplay":
             # AirPlay over the USB cable (Personal Hotspot link): Apple's own protocol, any iOS version
-            backend = WiredAirPlayBackend(self.settings.wireless)
+            backend = WiredAirPlayBackend(self.settings.wireless, screen=self._screen_rect())
             self.ctrl.start(backend, "Wired", self.phones[0].name if self.phones else "iPhone (USB)")
             return
         if not self.phones:

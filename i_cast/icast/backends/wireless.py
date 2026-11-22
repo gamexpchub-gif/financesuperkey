@@ -8,9 +8,25 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
+import subprocess
+from functools import lru_cache
 
 from icast.backends.base import Backend, CastState, split_extra
+from icast.core import viewer
 from icast.core.config import WirelessSettings
+
+
+@lru_cache(maxsize=4)
+def uxplay_supports_vrtp(binary: str = "uxplay") -> bool:
+    """UxPlay >= 1.73 can forward the decrypted video (-vrtp) instead of rendering it itself."""
+    if not shutil.which(binary):
+        return False
+    try:
+        res = subprocess.run([binary, "-h"], capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return "-vrtp" in (res.stdout + res.stderr)
 
 
 class WirelessBackend(Backend):
@@ -20,7 +36,7 @@ class WirelessBackend(Backend):
     STATE_PATTERNS = (
         (CastState.ERROR, (r"\berror\b.*(bind|port|dns.?sd|avahi)", r"failed to (start|create|register)",
                            r"DNSServiceRegister", r"address already in use")),
-        (CastState.STREAMING, (r"connection request from", r"begin streaming", r"raop_rtp_mirror",
+        (CastState.STREAMING, (r"\[viewer\].*(Input #0|Stream #0)", r"connection request from", r"begin streaming", r"raop_rtp_mirror",
                                r"open connections:\s*[1-9]", r"client connected")),
         (CastState.WAITING, (r"Initialized server socket", r"Accepting connections", r"server started",
                              r"connection closed", r"open connections:\s*0", r"teardown")),
@@ -38,11 +54,44 @@ class WirelessBackend(Backend):
          "The AirPlay ports are busy. Turn off “Use fixed ports” in Settings, or choose another base port."),
     )
 
-    def __init__(self, settings: WirelessSettings, binary: str = "uxplay") -> None:
+    companion_timeout_s = 10.0
+
+    def __init__(self, settings: WirelessSettings, binary: str = "uxplay",
+                 screen: tuple[int, int, int, int] | None = None, use_viewer: bool | None = None,
+                 player: str = "ffplay") -> None:
         self.s = settings
         self.binary = binary
+        self.screen = screen
+        self.player = player
         self.wants_retry = False
         self._fresh_id = False   # retry: random device ID (-m) + computer name appended
+        # iCast's own viewer: re-fits every frame, so landscape games fill the screen automatically
+        self.use_viewer = (use_viewer if use_viewer is not None
+                           else bool(shutil.which(player)) and uxplay_supports_vrtp(binary))
+        self.port: int | None = None
+        self.sdp = None
+
+    def display_size(self) -> tuple[int, int]:
+        """Size requested from the iPhone. Height is what the iPhone uses; width follows the orientation."""
+        if self.s.resolution == "auto":
+            if self.screen:
+                return int(self.screen[2]), int(self.screen[3])
+            return 1920, 1080
+        w, h = self.s.resolution.split("x")
+        return int(w), int(h)
+
+    def companions(self) -> list[list[str]]:
+        if not self.use_viewer or self.sdp is None:
+            return []
+        return [viewer.ffplay_command(viewer.rtp_source(self.sdp), player=self.player,
+                                      latency="ultra" if self.s.low_latency else "smooth",
+                                      fullscreen=self.s.fullscreen, screen=self.screen,
+                                      rotation=self.s.rotation, flip=self.s.flip)]
+
+    def companions_ready(self) -> bool:
+        if self.port is None or not os.path.exists("/proc/net/udp"):
+            return True
+        return viewer.port_bound(self.port, "udp")
 
     def classify(self, line: str) -> CastState | None:
         if re.search(self.NAME_CONFLICT, line) and not self._fresh_id:
@@ -73,19 +122,30 @@ class WirelessBackend(Backend):
             argv.append("-nh")
         if self._fresh_id:
             argv.append("-m")  # random MAC / device ID
-        w, h = s.resolution.split("x")
+        w, h = self.display_size()
+        # @fps tells the iPhone the display's refresh rate; -fps is the maximum it may stream
         argv += ["-s", f"{w}x{h}@{s.fps}", "-fps", str(s.fps)]
-        if s.fullscreen:
-            argv.append("-fs")
-        if s.rotation in ("L", "R"):
-            argv += ["-r", s.rotation]
-        if s.flip in ("H", "V", "I"):
-            argv += ["-f", s.flip]
+        if self.use_viewer:
+            self.port = viewer.free_udp_port()
+            if self.sdp is not None:
+                try:
+                    self.sdp.unlink()
+                except OSError:
+                    pass
+            self.sdp = viewer.write_rtp_sdp(self.port)
+            argv += ["-vrtp", f"config-interval=-1 ! udpsink host=127.0.0.1 port={self.port} sync=false"]
+        else:
+            if s.fullscreen:
+                argv.append("-fs")
+            if s.rotation in ("L", "R"):
+                argv += ["-r", s.rotation]
+            if s.flip in ("H", "V", "I"):
+                argv += ["-f", s.flip]
         if s.audio_sink == "none":
             argv += ["-as", "0"]
         elif s.audio_sink != "auto":
             argv += ["-as", s.audio_sink]
-        if s.video_sink != "auto":
+        if s.video_sink != "auto" and not self.use_viewer:
             argv += ["-vs", s.video_sink]
         if s.low_latency:
             argv += ["-vsync", "no"]

@@ -21,9 +21,11 @@ class WiredAirPlayBackend(WirelessBackend):
     name = "Wired (AirPlay over USB)"
     prepare_label = "Starting AirPlay over the USB cable…"
 
-    def __init__(self, settings: WirelessSettings, binary: str = "uxplay", link_finder=find_iphone_link) -> None:
+    def __init__(self, settings: WirelessSettings, binary: str = "uxplay", link_finder=find_iphone_link,
+                 screen: tuple[int, int, int, int] | None = None, use_viewer: bool | None = None) -> None:
         # always one big fullscreen window, lowest latency
-        super().__init__(replace(settings, fullscreen=True, low_latency=True), binary=binary)
+        super().__init__(replace(settings, fullscreen=True, low_latency=True), binary=binary, screen=screen,
+                         use_viewer=use_viewer)
         self.link_finder = link_finder
         self.link = None
 

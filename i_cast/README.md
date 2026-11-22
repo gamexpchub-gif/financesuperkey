@@ -52,6 +52,18 @@ icast pair <udid>           # show the "Trust This Computer" prompt
 - **Wireless:** iPhone আর কম্পিউটার একই Wi‑Fi তে রাখুন → iCast এ *Start casting* চাপুন → iPhone এ Control Center → Screen Mirroring → **iCast** সিলেক্ট করুন।
 - **Wired:** ক্যাবল দিয়ে iPhone লাগান → ফোন unlock করে **Trust** চাপুন → *Wired · USB* ট্যাবে ফোন দেখাবে → *Start casting*।
 
+## Fullscreen in any orientation (games, video, landscape apps)
+
+AirPlay keeps the picture's **height** and changes its **width** when the iPhone rotates. UxPlay's own
+window keeps the size of the first (portrait) frame, so landscape games ended up small in the middle.
+iCast now asks UxPlay to forward the video (`-vrtp`, UxPlay ≥ 1.73) to iCast's fullscreen viewer,
+which re-fits every frame to the screen: portrait fills the height, landscape fills the width —
+automatically, wired and wireless. Resolution **Auto** requests exactly this monitor's size.
+
+**Frame rate:** iCast tells the iPhone the display runs at 120 Hz and allows up to 120 fps
+(`-s WxH@120 -fps 120`). The iPhone decides the final rate (many models send at most 60 fps over
+AirPlay); iCast shows every frame it receives immediately.
+
 ## Wired engines
 
 | Engine | How | Notes |

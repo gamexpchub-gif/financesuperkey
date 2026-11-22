@@ -7,8 +7,8 @@ import os
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
-RESOLUTIONS = ("1280x720", "1920x1080", "2560x1440", "3840x2160")
-FRAME_RATES = (30, 60)
+RESOLUTIONS = ("auto", "1280x720", "1920x1080", "2560x1440", "3840x2160")
+FRAME_RATES = (30, 60, 120)
 ROTATIONS = ("none", "L", "R")  # UxPlay -r values
 FLIPS = ("none", "H", "V", "I")  # UxPlay -f values
 AUDIO_SINKS = ("auto", "pulsesink", "pipewiresink", "alsasink", "none")
@@ -16,7 +16,7 @@ VIDEO_SINKS = ("auto", "autovideosink", "glimagesink", "xvimagesink", "waylandsi
 WIRED_OUTPUTS = ("fullscreen", "window", "record")
 LATENCY_MODES = ("ultra", "smooth")
 WIRED_ENGINES = ("airplay", "qvh")
-SETTINGS_VERSION = 2
+SETTINGS_VERSION = 3
 
 
 def config_dir() -> Path:
@@ -28,11 +28,11 @@ def config_dir() -> Path:
 class WirelessSettings:
     receiver_name: str = "iCast"
     append_hostname: bool = False
-    resolution: str = "1920x1080"
-    fps: int = 60
+    resolution: str = "auto"   # auto = this monitor's size (the iPhone sizes the picture by height)
+    fps: int = 120
     pin_enabled: bool = False
     pin: str = ""
-    fullscreen: bool = False
+    fullscreen: bool = True
     rotation: str = "none"
     flip: str = "none"
     audio_sink: str = "auto"
@@ -99,6 +99,14 @@ class AppSettings:
             # v1 defaulted wired output to a small window; v2 casts fullscreen by default.
             if old_version < 2 and settings.wired.output == "window":
                 settings.wired.output = "fullscreen"
+            # v3: AirPlay fills the screen in any orientation and asks for up to 120 fps
+            if old_version < 3:
+                w = settings.wireless
+                if w.resolution == "1920x1080":
+                    w.resolution = "auto"
+                if w.fps == 60:
+                    w.fps = 120
+                w.fullscreen = True
         settings.settings_version = SETTINGS_VERSION
         settings.validate()
         return settings
