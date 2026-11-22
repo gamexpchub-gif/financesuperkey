@@ -20,7 +20,7 @@ sudo apt-get install -y \
   usbmuxd libimobiledevice-utils libusb-1.0-0 \
   gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
   gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-gl gstreamer1.0-pulseaudio \
-  golang-go git ffmpeg pkg-config libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libusb-1.0-0-dev
+  golang-go git ffmpeg mpv pkg-config libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libusb-1.0-0-dev
 
 say "Enabling Avahi (AirPlay discovery) and usbmuxd…"
 sudo systemctl enable --now avahi-daemon || true

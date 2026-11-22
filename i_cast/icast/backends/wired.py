@@ -33,9 +33,10 @@ from functools import lru_cache
 from pathlib import Path
 
 from icast.backends.base import Backend, CastState, split_extra
+from icast.core import viewer
 from icast.core.config import WiredSettings
 
-VIEWER_TITLE = "iCast — iPhone"
+VIEWER_TITLE = "iCast - iPhone"
 USB_HELPER = "/usr/local/libexec/icast-usb"  # installed by scripts/install.sh
 QVH_PATCH_MARKER = "/usr/local/share/icast/qvh-patched-d81396e"  # qvh built by scripts/build-qvh.sh
 
@@ -152,7 +153,7 @@ class WiredBackend(Backend):
                            r"Unable to find device", r"LIBUSB_ERROR", r"access denied", r"\bpanic\b",
                            r"Invalid Pipeline", r"Failed creating custom pipeline", r"failed connecting to usb",
                            r"Error enabling QT config")),
-        (CastState.STREAMING, (r"\[viewer\].*Input #0", r"\[viewer\].*Stream #0:0", r"PING received",
+        (CastState.STREAMING, (viewer.STREAM_STARTED, r"PING received",
                                r"Start Session")),
         (CastState.WAITING, (r"Starting Gstreamer", r"Gstreamer is running", r"USB connection ready",
                              r"waiting for ping", r"no usbSerial specified")),
@@ -225,7 +226,7 @@ class WiredBackend(Backend):
     def preflight(self) -> str | None:
         """Problems that make a wired cast impossible, found before touching the iPhone."""
         if self.s.output != "record" and not shutil.which(self.player) and self.s.output == "fullscreen":
-            return "ffplay (from ffmpeg) is missing — run scripts/install.sh."
+            return "The fullscreen viewer (mpv or ffplay) is missing — run scripts/install.sh."
         if not os.path.exists(USB_HELPER) or not os.path.exists(QVH_PATCH_MARKER):
             return ("iCast's USB components are out of date (USB helper / patched qvh). "
                     "Run scripts/install.sh once, re-plug the iPhone, then press Start Wired.")
@@ -292,11 +293,11 @@ class WiredBackend(Backend):
         return argv
 
     def __init__(self, settings: WiredSettings, udid: str = "", binary: str = "qvh",
-                 player: str = "ffplay", screen: tuple[int, int, int, int] | None = None) -> None:
+                 player: str | None = None, screen: tuple[int, int, int, int] | None = None) -> None:
         self.s = settings
         self.udid = udid or settings.preferred_udid
         self.binary = binary
-        self.player = player
+        self.player = player or viewer.available_player() or "ffplay"
         self.port: int | None = None
         # (x, y, width, height) of the monitor to fill; makes fullscreen work even without a WM.
         self.screen = screen
@@ -328,29 +329,9 @@ class WiredBackend(Backend):
         )
 
     def viewer_command(self, port: int) -> list[str]:
-        return [
-            # info level so iCast sees "Input #0" the moment the picture arrives; no stats spam
-            self.player, "-hide_banner", "-nostats", "-loglevel", "info",
-            # input: no buffering, no probing delay
-            "-fflags", "nobuffer", "-flags", "low_delay", "-probesize", "32", "-analyzeduration", "0",
-            # ultra: every frame is due "now" and stale ones are dropped -> newest frame on screen
-            *self._pacing_args(),
-            # one borderless fullscreen window, picture only (audio is handled by GStreamer)
-            "-an", "-fs", "-noborder", "-window_title", VIEWER_TITLE,
-            *self._geometry_args(),
-            "-f", "h264", f"tcp://127.0.0.1:{port}?listen=1",
-        ]
-
-    def _pacing_args(self) -> list[str]:
-        if self.s.latency_mode == "smooth":
-            return ["-framedrop", "-sync", "ext"]
-        return ["-framedrop", "-sync", "ext", "-vf", "setpts=0"]
-
-    def _geometry_args(self) -> list[str]:
-        if not self.screen:
-            return []
-        x, y, w, h = (int(v) for v in self.screen)
-        return ["-left", str(x), "-top", str(y), "-x", str(w), "-y", str(h)]
+        # mpv (preferred: Esc = small window, F = fullscreen, Q = stop) or ffplay, both low-latency
+        return viewer.viewer_command(tcp_listen_port=port, latency=self.s.latency_mode, fullscreen=True,
+                                     screen=self.screen, player=self.player)
 
     # ------------------------------------------------------------------ commands
     def build_command(self) -> list[str]:

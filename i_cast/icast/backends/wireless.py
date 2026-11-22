@@ -36,7 +36,7 @@ class WirelessBackend(Backend):
     STATE_PATTERNS = (
         (CastState.ERROR, (r"\berror\b.*(bind|port|dns.?sd|avahi)", r"failed to (start|create|register)",
                            r"DNSServiceRegister", r"address already in use")),
-        (CastState.STREAMING, (r"\[viewer\].*(Input #0|Stream #0)", r"connection request from", r"begin streaming", r"raop_rtp_mirror",
+        (CastState.STREAMING, (viewer.STREAM_STARTED, r"connection request from", r"begin streaming", r"raop_rtp_mirror",
                                r"open connections:\s*[1-9]", r"client connected")),
         (CastState.WAITING, (r"Initialized server socket", r"Accepting connections", r"server started",
                              r"connection closed", r"open connections:\s*0", r"teardown")),
@@ -58,16 +58,16 @@ class WirelessBackend(Backend):
 
     def __init__(self, settings: WirelessSettings, binary: str = "uxplay",
                  screen: tuple[int, int, int, int] | None = None, use_viewer: bool | None = None,
-                 player: str = "ffplay") -> None:
+                 player: str | None = None) -> None:
         self.s = settings
         self.binary = binary
         self.screen = screen
-        self.player = player
+        self.player = player or viewer.available_player() or "ffplay"
         self.wants_retry = False
         self._fresh_id = False   # retry: random device ID (-m) + computer name appended
         # iCast's own viewer: re-fits every frame, so landscape games fill the screen automatically
         self.use_viewer = (use_viewer if use_viewer is not None
-                           else bool(shutil.which(player)) and uxplay_supports_vrtp(binary))
+                           else bool(shutil.which(self.player)) and uxplay_supports_vrtp(binary))
         self.port: int | None = None
         self.sdp = None
 
@@ -83,7 +83,8 @@ class WirelessBackend(Backend):
     def companions(self) -> list[list[str]]:
         if not self.use_viewer or self.sdp is None:
             return []
-        return [viewer.ffplay_command(viewer.rtp_source(self.sdp), player=self.player,
+        # mpv (preferred: Esc = small window, F = fullscreen, Q = stop) or ffplay
+        return [viewer.viewer_command(rtp_sdp=self.sdp, player=self.player,
                                       latency="ultra" if self.s.low_latency else "smooth",
                                       fullscreen=self.s.fullscreen, screen=self.screen,
                                       rotation=self.s.rotation, flip=self.s.flip)]

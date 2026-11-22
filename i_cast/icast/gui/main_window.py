@@ -436,8 +436,8 @@ class MainWindow(QMainWindow):
             r.addWidget(t, 1)
             sl.addLayout(r)
         sl.addStretch(1)
-        sl.addWidget(text_label("Tip: 5 GHz Wi‑Fi gives the smoothest, lowest-latency picture.", 14,
-                                QFont.Normal, theme.MUTED))
+        sl.addWidget(text_label("Viewer keys: Esc = small window · F / double-click = fullscreen · Q = stop. "
+                                "Tip: 5 GHz Wi‑Fi gives the smoothest picture.", 14, QFont.Normal, theme.MUTED))
         self.btn_wireless = GradientButton("Start Wireless", theme.GRAD_WIRELESS, height=60, font_px=20)
         self.btn_wireless.clicked.connect(lambda: self.cast("wireless"))
         sl.addWidget(self.btn_wireless, 0, Qt.AlignLeft)
@@ -920,10 +920,11 @@ class MainWindow(QMainWindow):
             w.setVisible(not airplay)
         self.u_engine_hint.setText(
             "Cable + Personal Hotspot: on the iPhone turn on Settings → Personal Hotspot → “Allow Others to "
-            "Join”, press Start Wired, then Control Center → Screen Mirroring → iCast. Opens fullscreen."
+            "Join”, press Start Wired, then Control Center → Screen Mirroring → iCast. Opens fullscreen · "
+            "Esc: small window · F / double-click: fullscreen · Q: stop."
             if airplay else
             "QuickTime screen capture over USB (qvh). May not work on the newest iOS versions. "
-            "Esc stops casting · F toggles fullscreen.")
+            "Esc: small window · F / double-click: fullscreen · Q: stop.")
 
     def _after_recover(self) -> None:
         self.watcher.scan()

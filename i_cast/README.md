@@ -52,6 +52,17 @@ icast pair <udid>           # show the "Trust This Computer" prompt
 - **Wireless:** iPhone আর কম্পিউটার একই Wi‑Fi তে রাখুন → iCast এ *Start casting* চাপুন → iPhone এ Control Center → Screen Mirroring → **iCast** সিলেক্ট করুন।
 - **Wired:** ক্যাবল দিয়ে iPhone লাগান → ফোন unlock করে **Trust** চাপুন → *Wired · USB* ট্যাবে ফোন দেখাবে → *Start casting*।
 
+## Viewer keys (wired and wireless)
+
+| Key | Action |
+|---|---|
+| **Esc** | leave fullscreen → small window (casting keeps running) |
+| **F** / **Enter** / double-click | fullscreen again |
+| **Q** / close the window | stop casting |
+
+The viewer is **mpv** (low-latency profile, iCast's own key bindings); ffplay is used if mpv is not
+installed (there Esc stops casting).
+
 ## Fullscreen in any orientation (games, video, landscape apps)
 
 AirPlay keeps the picture's **height** and changes its **width** when the iPhone rotates. UxPlay's own

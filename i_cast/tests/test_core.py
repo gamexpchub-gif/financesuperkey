@@ -47,7 +47,7 @@ def test_wired_window_and_record(tmp_path):
 def test_wired_fullscreen_low_latency(monkeypatch):
     import icast.backends.wired as wired
     monkeypatch.setattr(wired.shutil, "which", lambda name: f"/usr/bin/{name}")
-    b = WiredBackend(WiredSettings(), udid="abc123", screen=(0, 0, 2560, 1440))
+    b = WiredBackend(WiredSettings(), udid="abc123", screen=(0, 0, 2560, 1440), player="ffplay")
     argv = b.build_command()
     assert argv[:2] == ["qvh", "gstreamer"] and argv[-1] == "--udid=abc123"
     pipeline = argv[2].split("=", 1)[1]
@@ -62,7 +62,7 @@ def test_wired_fullscreen_low_latency(monkeypatch):
                  ["-x", "2560"], ["-y", "1440"], ["-framedrop"]):
         i = viewer.index(flag[0])
         assert viewer[i:i + len(flag)] == flag
-    smooth = WiredBackend(WiredSettings(latency_mode="smooth"), udid="x")
+    smooth = WiredBackend(WiredSettings(latency_mode="smooth"), udid="x", player="ffplay")
     smooth.build_command()
     assert "setpts=0" not in smooth.companions()[0]
 
@@ -460,7 +460,8 @@ def test_main_window_builds_every_page(tmp_path, monkeypatch):
 
 
 def test_airplay_renders_through_icast_viewer_so_landscape_fills_the_screen():
-    b = WirelessBackend(WirelessSettings(rotation="R", flip="H"), screen=(0, 0, 2560, 1440), use_viewer=True)
+    b = WirelessBackend(WirelessSettings(rotation="R", flip="H"), screen=(0, 0, 2560, 1440), use_viewer=True,
+                        player="ffplay")
     argv = b.build_command()
     # the iPhone sizes the picture by height: ask for this monitor's height, at 120 Hz
     assert argv[argv.index("-s") + 1] == "2560x1440@120" and argv[argv.index("-fps") + 1] == "120"
@@ -482,3 +483,30 @@ def test_settings_v3_migration_auto_fit_and_120fps():
     assert (old.wireless.resolution, old.wireless.fps, old.wireless.fullscreen) == ("auto", 120, True)
     custom = AppSettings.from_dict({"settings_version": 3, "wireless": {"resolution": "1280x720", "fps": 30}})
     assert (custom.wireless.resolution, custom.wireless.fps) == ("1280x720", 30)
+
+
+def test_mpv_viewer_keys_esc_goes_to_small_window(tmp_path, monkeypatch):
+    from icast.core import viewer
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    monkeypatch.setattr(viewer, "mpv_supports", lambda opt, binary="mpv": True)
+    sdp = tmp_path / "s.sdp"
+    argv = viewer.viewer_command(rtp_sdp=sdp, screen=(0, 0, 1920, 1080), rotation="L", flip="V", player="mpv")
+    conf = (tmp_path / "icast-viewer-input.conf").read_text()
+    assert "ESC          set fullscreen no" in conf and "q            quit" in conf
+    assert "MBTN_LEFT_DBL cycle fullscreen" in conf and "CLOSE_WIN    quit" in conf
+    for flag in ("--profile=low-latency", "--untimed", "--no-input-default-bindings", "--fs",
+                 "--auto-window-resize=no", "--video-rotate=270", "--vf=lavfi=[vflip]",
+                 f"--input-conf={tmp_path / 'icast-viewer-input.conf'}"):
+        assert flag in argv, flag
+    assert any(a.startswith("--geometry=960x540+") for a in argv)      # the size Esc drops to
+    assert "protocol_whitelist=[file,udp,rtp]" in [a for a in argv if a.startswith("--demuxer-lavf-o")][0]
+    assert argv[-1] == str(sdp)
+    tcp = viewer.viewer_command(tcp_listen_port=5000, latency="smooth", player="mpv")
+    assert tcp[-1] == "lavf://tcp://127.0.0.1:5000?listen=1" and "--demuxer-lavf-format=h264" in tcp
+    assert "--untimed" not in tcp
+
+
+def test_viewer_streaming_detection_for_mpv_and_ffplay():
+    b = WirelessBackend(WirelessSettings(), use_viewer=False)
+    assert b.classify("[viewer]  (+) Video --vid=1 (h264 1170x2532)") == CastState.STREAMING
+    assert b.classify("[viewer] Input #0, sdp, from 'x.sdp':") == CastState.STREAMING

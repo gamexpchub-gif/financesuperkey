@@ -25,6 +25,7 @@ DEPENDENCIES: tuple[Dependency, ...] = (
     Dependency("idevicepair", "idevicepair", "Pair / trust iPhone", "wired", "libimobiledevice-utils"),
     Dependency("qvh", "qvh", "USB screen capture (QuickTime protocol)", "wired", "(build from source)"),
     Dependency("gst", "gst-launch-1.0", "GStreamer media pipeline", "both", "gstreamer1.0-tools"),
+    Dependency("mpv", "mpv", "Fullscreen viewer (Esc = small window)", "both", "mpv"),
 )
 
 
