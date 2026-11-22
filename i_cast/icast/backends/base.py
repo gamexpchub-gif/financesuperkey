@@ -56,6 +56,7 @@ class Backend(ABC):
     # When the engine exits because of a recoverable problem, the backend may ask for exactly one
     # automatic restart (e.g. AirPlay name conflict -> restart with a fresh device ID).
     wants_retry: bool = False
+    restart_now: bool = False   # with wants_retry: stop the running engine now so the retry happens
     prepare_label: str = "Preparing…"
 
     def prepare_retry(self) -> str:

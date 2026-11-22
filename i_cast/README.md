@@ -71,6 +71,10 @@ iCast now asks UxPlay to forward the video (`-vrtp`, UxPlay ≥ 1.73) to iCast's
 which re-fits every frame to the screen: portrait fills the height, landscape fills the width —
 automatically, wired and wireless. Resolution **Auto** requests exactly this monitor's size.
 
+**Resolution:** H.264 mirroring tops out at 1920x1080, so Auto requests the monitor size capped at
+1920x1080 (the iPhone sizes by height, so 1080p screens lose nothing). Larger requests make iPhones
+switch to H.265.
+
 **Frame rate:** iCast tells the iPhone the display runs at 120 Hz and allows up to 120 fps
 (`-s WxH@120 -fps 120`). The iPhone decides the final rate (many models send at most 60 fps over
 AirPlay); iCast shows every frame it receives immediately.
@@ -125,6 +129,8 @@ iCast resolves this per session:
 | iPhone not listed under USB | Unlock the phone, tap *Trust*, run `sudo systemctl restart usbmuxd`, try another cable |
 | "Not trusted" | Click *Trust this computer* in iCast and accept on the iPhone |
 | No sound | Wireless: set *Audio output* to `pulsesink` or `pipewiresink`. Wired: check *Play iPhone sound* |
+| AirPlay connects and drops again and again; log: “non-h264 video … SupportsScreenMultiCodec” | The iPhone switched to H.265 (e.g. a 2560-wide ultrawide monitor was requested). Fixed: iCast caps requests at 1920x1080 and, if it still happens, restarts the receiver automatically at 1920x1080 @ 60 |
+| Viewer closes by itself while waiting for the iPhone | Fixed: iCast reopens the viewer and keeps casting; only Q / closing the window stops |
 | Wired (AirPlay): “USB link (eth0) has no address” | iCast now waits up to 20 s and asks NetworkManager to connect. If the iPhone isn't serving (cable carrier off): Settings → Personal Hotspot → “Allow Others to Join”, keep that screen open a few seconds. Otherwise: `nmcli device connect eth0`, or toggle Personal Hotspot |
 | Wired: stuck on “Preparing iPhone for capture…” | iCast now gives up after 25 s with advice. Unplug and re-plug the iPhone, unlock it, Start Wired again. The log contains qvh's detailed (`-v`) output — send it if it repeats |
 | Wired: “device not found, is it still connected? … /var/run/usbmuxd” | Old qvh. Run `scripts/install.sh` — it builds the pinned, patched qvh (`scripts/build-qvh.sh`) |

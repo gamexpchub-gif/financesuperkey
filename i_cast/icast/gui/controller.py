@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import threading
@@ -10,7 +11,7 @@ import time
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Signal
 
 from icast.backends.base import Backend, CastState, run_steps
-from icast.core import devices, history
+from icast.core import devices, history, viewer
 from icast.core.process import ManagedProcess
 
 
@@ -70,6 +71,7 @@ class CastController(QObject):
         self.cleaning_up = False
         self._last_error = ""
         self._retried = False
+        self._viewer_restarts = 0
         self._cancel = threading.Event()
         self._line_from_thread.connect(self._on_line)
         self._exit_from_thread.connect(self._on_exit)
@@ -109,6 +111,7 @@ class CastController(QObject):
             return
         self.backend = backend
         self._retried = False
+        self._viewer_restarts = 0
         blocker = backend.preflight()
         if blocker:
             self._last_error = blocker
@@ -254,16 +257,37 @@ class CastController(QObject):
             c.on_exit = lambda _c: None
             c.stop(timeout=2)
 
+    VIEWER_MAX_RESTARTS = 20
+
     def _on_companion_exit(self, code: int) -> None:
-        # The viewer window was closed (Esc / q / window close) -> end the whole session.
-        if self.proc and self.proc.running:
+        if not (self.proc and self.proc.running):
+            return
+        if code == 0 or self._viewer_restarts >= self.VIEWER_MAX_RESTARTS:
+            # Q / window closed by the user -> end the whole session
             self.log_line.emit("Viewer closed — ending session")
             self.proc.stop()
+            return
+        # the viewer gave up on its own (e.g. no picture for a while): bring it back, keep casting
+        self._viewer_restarts += 1
+        self.log_line.emit("Viewer stopped waiting for the picture — reopening it")
+        QTimer.singleShot(300, self._restart_dead_companions)
+
+    def _restart_dead_companions(self) -> None:
+        if not (self.proc and self.proc.running):
+            return
+        for comp in self.companions:
+            if not comp.running:
+                try:
+                    comp.start()
+                except (OSError, RuntimeError) as exc:
+                    self.log_line.emit(f"Could not reopen the viewer: {exc}")
 
     # ---------------------------------------------------------------- events
     def _on_line(self, line: str) -> None:
         if self.backend:
             line = self.backend.humanize(line)
+        if line.startswith("[viewer]") and re.search(viewer.NOISE, line):
+            return
         self.log_line.emit(line)
         if self.backend:
             ready = self.backend.engine_ready_steps(line)
@@ -276,6 +300,10 @@ class CastController(QObject):
                 self._set(new, self._last_error)
             elif new and new != self.state:
                 self._set(new, line[:120])
+            if self.backend.restart_now and self.proc and self.proc.running:
+                self.backend.restart_now = False
+                self.log_line.emit("Restarting the receiver with safer video settings…")
+                QTimer.singleShot(0, self.proc.stop)    # exit -> automatic retry in _on_exit
 
     def _on_exit(self, code: int) -> None:
         self.log_line.emit(f"Engine exited (code {code})")

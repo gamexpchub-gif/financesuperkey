@@ -7,7 +7,7 @@ import os
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
-RESOLUTIONS = ("auto", "1280x720", "1920x1080", "2560x1440", "3840x2160")
+RESOLUTIONS = ("auto", "1280x720", "1920x1080")   # H.264 mirroring: 1080p max
 FRAME_RATES = (30, 60, 120)
 ROTATIONS = ("none", "L", "R")  # UxPlay -r values
 FLIPS = ("none", "H", "V", "I")  # UxPlay -f values

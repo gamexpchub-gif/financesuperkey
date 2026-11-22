@@ -91,6 +91,14 @@ MBTN_LEFT_DBL cycle fullscreen
 q            quit
 Q            quit
 CLOSE_WIN    quit
+# live mirroring: no pausing / seeking / volume on these
+SPACE        ignore
+MBTN_LEFT    ignore
+MBTN_RIGHT   ignore
+WHEEL_UP     ignore
+WHEEL_DOWN   ignore
+WHEEL_LEFT   ignore
+WHEEL_RIGHT  ignore
 """
 
 
@@ -189,3 +197,7 @@ def viewer_command(*, rtp_sdp: Path | None = None, tcp_listen_port: int | None =
 
 # log lines that mean "the picture is arriving" (ffplay / mpv)
 STREAM_STARTED = r"\[viewer\].*(Input #0|Stream #0|\(\+\) Video|VO: \[)"
+
+# harmless driver / player chatter that would only clutter the activity log
+NOISE = (r"\[viewer\].*(libplacebo|MESA|libEGL|DRI3|vdpau|No key binding found|File tags:|Title: iCast|"
+         r"attempted to set receive buffer|error reading packet: Connection timed out|Masking `storable`)")

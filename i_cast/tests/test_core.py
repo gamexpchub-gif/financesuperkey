@@ -425,7 +425,7 @@ def test_wired_airplay_backend(tmp_path):
     assert "Personal Hotspot" in b.preflight()
     b = WiredAirPlayBackend(WirelessSettings(), link_finder=lambda: UsbLink("eth0", None), use_viewer=False)
     assert b.preflight() is None                                  # no address yet -> wait in prepare
-    assert b.prepare_steps()[0][-3:] == ["icast.core.usbnet", "wait", "20"]
+    assert b.prepare_steps()[0][-3:] == ["icast.core.usbnet", "wait", "30"]
     assert "Personal Hotspot" in b.step_failed(["python", "-m", "icast.core.usbnet", "wait"], 6,
         "Waiting…\nFATAL: the iPhone is not serving its USB network — on the iPhone open Settings → Personal Hotspot")
     b = WiredAirPlayBackend(WirelessSettings(fullscreen=False), link_finder=lambda: UsbLink("enx1", "172.20.10.2"),
@@ -467,7 +467,7 @@ def test_airplay_renders_through_icast_viewer_so_landscape_fills_the_screen():
                         player="ffplay")
     argv = b.build_command()
     # the iPhone sizes the picture by height: ask for this monitor's height, at 120 Hz
-    assert argv[argv.index("-s") + 1] == "2560x1440@120" and argv[argv.index("-fps") + 1] == "120"
+    assert argv[argv.index("-s") + 1] == "1920x1080@120" and argv[argv.index("-fps") + 1] == "120"
     vrtp = argv[argv.index("-vrtp") + 1]
     assert vrtp == f"config-interval=-1 ! udpsink host=127.0.0.1 port={b.port} sync=false"
     assert "-fs" not in argv and "-r" not in argv           # the viewer does fullscreen/rotation now
@@ -547,3 +547,32 @@ def test_usb_network_wait_nudges_networkmanager_and_explains(tmp_path, monkeypat
     assert usbnet.wait_for_address(5, log=logs.append, finder=lambda: UsbLink("eth0", None),
                                    connect=lambda n: "ok", sleep=tick) == 6
     assert "nmcli device connect eth0" in logs[-1]
+
+
+UXPLAY_HEVC = ("this indicates non-h264 video but Airplay features bit 42 (SupportsScreenMultiCodec) is not set")
+
+
+def test_ultrawide_monitor_stays_within_h264_and_hevc_triggers_safe_restart():
+    # the second computer: 2560x1080 ultrawide -> iPhone switched to H.265 and UxPlay rejected it
+    b = WirelessBackend(WirelessSettings(), screen=(0, 0, 2560, 1080), use_viewer=False)
+    assert b.build_command()[b.build_command().index("-s") + 1] == "1920x1080@120"
+    assert b.classify(UXPLAY_HEVC) == CastState.WAITING          # not a hard error: iCast fixes it
+    assert b.wants_retry and b.restart_now
+    assert "1920x1080 @ 60" in b.prepare_retry()
+    argv = b.build_command()
+    assert argv[argv.index("-s") + 1] == "1920x1080@60" and argv[argv.index("-fps") + 1] == "60"
+    b.classify(UXPLAY_HEVC)
+    assert not b.restart_now                                         # only once
+
+
+def test_viewer_noise_is_filtered_and_keys_are_ignored():
+    import re
+    from icast.core import viewer
+    for noisy in ("[viewer] [vo/gpu-next/libplacebo] Masking `storable` from wrapped texture",
+                  "[viewer] MESA-INTEL: warning: FINISHME", "[viewer] [input] No key binding found for key 'SPACE'.",
+                  "[viewer] [lavf] error reading packet: Connection timed out."):
+        assert re.search(viewer.NOISE, noisy), noisy
+    assert not re.search(viewer.NOISE, "[viewer] ● Video  --vid=1  (h264)")
+    assert "SPACE        ignore" in viewer.INPUT_CONF and "WHEEL_DOWN   ignore" in viewer.INPUT_CONF
+    assert "1920x1080" in AppSettings.from_dict({"wireless": {"resolution": "3840x2160"}}).wireless.resolution or \
+        AppSettings.from_dict({"wireless": {"resolution": "3840x2160"}}).wireless.resolution == "auto"

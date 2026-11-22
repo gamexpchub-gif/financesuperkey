@@ -40,11 +40,11 @@ class WiredAirPlayBackend(WirelessBackend):
         steps = super().prepare_steps()          # stop leftover receivers
         if self.link is not None and not self.link.ready:
             # the link is there but has no address yet: wait for DHCP, nudge NetworkManager if needed
-            steps = [[sys.executable, "-m", "icast.core.usbnet", "wait", "20"]] + steps
+            steps = [[sys.executable, "-m", "icast.core.usbnet", "wait", "30"]] + steps
         return steps
 
     def step_timeout(self, argv: list[str]) -> float:
-        return 30.0 if "icast.core.usbnet" in argv else super().step_timeout(argv)
+        return 40.0 if "icast.core.usbnet" in argv else super().step_timeout(argv)
 
     def step_failed(self, argv: list[str], code: int, output: str) -> str | None:
         if "icast.core.usbnet" in argv and code != 0:

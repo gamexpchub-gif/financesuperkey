@@ -36,6 +36,10 @@ if [ ! -f "$QVH_MARKER" ] || ! command -v qvh >/dev/null; then
   sudo mkdir -p /usr/local/share/icast && sudo touch "$QVH_MARKER"
 fi
 
+say "Tuning network buffers for smooth high-frame-rate mirroring…"
+echo "net.core.rmem_max=8388608" | sudo tee /etc/sysctl.d/90-icast.conf >/dev/null
+sudo sysctl -q -p /etc/sysctl.d/90-icast.conf || true
+
 say "Allowing USB access to iPhones without root…"
 sudo tee /etc/udev/rules.d/39-icast-iphone.rules >/dev/null <<'RULE'
 SUBSYSTEM=="usb", ATTR{idVendor}=="05ac", MODE="0666"

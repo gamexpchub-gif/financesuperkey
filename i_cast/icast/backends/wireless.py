@@ -34,6 +34,7 @@ class WirelessBackend(Backend):
     binary = "uxplay"
 
     STATE_PATTERNS = (
+        (CastState.WAITING, (r"non-h264 video", r"SupportsScreenMultiCodec")),
         (CastState.ERROR, (r"\berror\b.*(bind|port|dns.?sd|avahi)", r"failed to (start|create|register)",
                            r"DNSServiceRegister", r"address already in use")),
         (CastState.STREAMING, (viewer.STREAM_STARTED, r"connection request from", r"begin streaming", r"raop_rtp_mirror",
@@ -45,6 +46,8 @@ class WirelessBackend(Backend):
     prepare_label = "Starting AirPlay receiver…"
     NAME_CONFLICT = r"kDNSServiceErr_NameConflict|NameConflict"
     EXPLANATIONS = (
+        (r"non-h264 video|SupportsScreenMultiCodec",
+         "The iPhone tried to send H.265 video — iCast restarts the receiver at 1920x1080 automatically."),
         (NAME_CONFLICT,
          "Another AirPlay receiver on this network already uses the name/ID of iCast — iCast restarts it "
          "with a fresh device ID automatically. If it keeps happening, change Receiver name."),
@@ -64,21 +67,34 @@ class WirelessBackend(Backend):
         self.screen = screen
         self.player = player or viewer.available_player() or "ffplay"
         self.wants_retry = False
-        self._fresh_id = False   # retry: random device ID (-m) + computer name appended
+        self.restart_now = False       # ask the controller to restart the engine immediately
+        self._fresh_id = False         # retry: random device ID (-m) + computer name appended
+        self._safe_video = False       # retry: 1920x1080 @ 60 (iPhone sent H.265)
+        self._retry_reason = ""
         # iCast's own viewer: re-fits every frame, so landscape games fill the screen automatically
         self.use_viewer = (use_viewer if use_viewer is not None
                            else bool(shutil.which(self.player)) and uxplay_supports_vrtp(binary))
         self.port: int | None = None
         self.sdp = None
 
+    # H.264 mirroring tops out at 1920x1080. Asking for more (e.g. an ultrawide 2560x1080 monitor)
+    # makes the iPhone switch to H.265, which UxPlay rejects in H.264 mode ("non-h264 video ...").
+    H264_MAX = (1920, 1080)
+
     def display_size(self) -> tuple[int, int]:
         """Size requested from the iPhone. Height is what the iPhone uses; width follows the orientation."""
-        if self.s.resolution == "auto":
-            if self.screen:
-                return int(self.screen[2]), int(self.screen[3])
-            return 1920, 1080
-        w, h = self.s.resolution.split("x")
-        return int(w), int(h)
+        if self._safe_video:
+            return self.H264_MAX
+        if self.s.resolution == "auto" and self.screen:
+            w, h = int(self.screen[2]), int(self.screen[3])
+        elif self.s.resolution == "auto":
+            w, h = self.H264_MAX
+        else:
+            w, h = (int(v) for v in self.s.resolution.split("x"))
+        return min(w, self.H264_MAX[0]), min(h, self.H264_MAX[1])
+
+    def frame_rate(self) -> int:
+        return 60 if self._safe_video else int(self.s.fps)
 
     def companions(self) -> list[list[str]]:
         if not self.use_viewer or self.sdp is None:
@@ -94,9 +110,14 @@ class WirelessBackend(Backend):
             return True
         return viewer.port_bound(self.port, "udp")
 
+    HEVC = r"non-h264 video|SupportsScreenMultiCodec"
+
     def classify(self, line: str) -> CastState | None:
         if re.search(self.NAME_CONFLICT, line) and not self._fresh_id:
-            self.wants_retry = True
+            self.wants_retry, self._retry_reason = True, "name"
+        if re.search(self.HEVC, line) and not self._safe_video and not self.wants_retry:
+            # UxPlay keeps running and the iPhone keeps retrying -> restart now with safe settings
+            self.wants_retry, self.restart_now, self._retry_reason = True, True, "hevc"
         return super().classify(line)
 
     def explain(self, line: str) -> str:
@@ -113,6 +134,11 @@ class WirelessBackend(Backend):
 
     def prepare_retry(self) -> str:
         self.wants_retry = False
+        self.restart_now = False
+        if self._retry_reason == "hevc":
+            self._safe_video = True
+            return ("The iPhone switched to H.265 video — restarting the receiver at 1920x1080 @ 60 fps (H.264), "
+                    "which every iPhone streams reliably")
         self._fresh_id = True
         return "Name conflict on the network — restarting the receiver with a fresh device ID"
 
@@ -124,8 +150,9 @@ class WirelessBackend(Backend):
         if self._fresh_id:
             argv.append("-m")  # random MAC / device ID
         w, h = self.display_size()
+        fps = self.frame_rate()
         # @fps tells the iPhone the display's refresh rate; -fps is the maximum it may stream
-        argv += ["-s", f"{w}x{h}@{s.fps}", "-fps", str(s.fps)]
+        argv += ["-s", f"{w}x{h}@{fps}", "-fps", str(fps)]
         if self.use_viewer:
             self.port = viewer.free_udp_port()
             if self.sdp is not None:

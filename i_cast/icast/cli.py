@@ -96,6 +96,7 @@ def _run_backend(backend, label: str) -> int:
 
 def _run_engine(backend, argv: list[str]) -> int:
     state = {"v": CastState.STARTING}
+    holder: dict = {}
 
     def on_line(line: str) -> None:
         line = backend.humanize(line)
@@ -111,6 +112,10 @@ def _run_engine(backend, argv: list[str]) -> int:
             if new == CastState.ERROR:
                 print(_c("bad", "  → " + backend.explain(line)))
         print(_c("dim", f"  {line}"))
+        if backend.restart_now and holder.get("proc"):
+            backend.restart_now = False
+            print(_c("b", "↻ restarting with safer video settings…"))
+            holder["proc"].stop()
 
     companions = []
     for cargv in backend.companions():
@@ -127,6 +132,7 @@ def _run_engine(backend, argv: list[str]) -> int:
             time.sleep(0.05)
 
     proc = ManagedProcess(argv, on_line=on_line, env=backend.engine_env() or None)
+    holder["proc"] = proc
     for comp in companions:  # closing the viewer ends the session
         comp.on_exit = lambda _c: proc.stop()
     proc.start()
