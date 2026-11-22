@@ -69,9 +69,16 @@ the phone picture centered and its shape kept.
 ### Why wired needs the patched qvh + USB helper
 Linux only lets qvh switch the iPhone into its screen-capture USB configuration while nothing else
 holds the iPhone, but stock qvh refuses to run unless usbmuxd (which *does* hold it) is reachable.
-iCast resolves this per session: `qvh activate` (pairing checked, usbmuxd up) → `icast-usb prepare`
-(pause usbmuxd, release the iPhone) → `qvh gstreamer` with `QVH_SKIP_PAIR_CHECK=1` → `icast-usb
-restore` → `qvh deactivate`. Cleanup always runs every step, also when iCast quits.
+iCast resolves this per session:
+
+1. `idevicepair validate` — trusted? (usbmuxd still running)
+2. `python -m icast.core.usbcap activate` — iCast's own activation: one usbfs control request
+   (0x40/0x52, wIndex 2, exactly what qvh/QuickTime send), then it watches `/sys` until the iPhone
+   re-connects with the vendor/0x2A capture interface — 15 s limit, readable progress. (qvh's
+   `activate` retries forever if the re-connect is missed.)
+3. `icast-usb prepare` — pause usbmuxd, release the iPhone's interfaces
+4. `qvh gstreamer` with `QVH_SKIP_PAIR_CHECK=1` — capture mode is already on, so it just captures
+5. cleanup (always, also on quit): `qvh deactivate` straight over USB → `icast-usb restore`
 
 ## Troubleshooting
 

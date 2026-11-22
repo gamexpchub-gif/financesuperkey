@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import shutil
 import socket
 import subprocess
@@ -195,9 +196,11 @@ class WiredBackend(Backend):
     def prepare_steps(self) -> list[list[str]]:
         if not self.udid:
             return []
-        # 1) let the iPhone expose its screen-capture USB configuration (it re-connects once).
-        #    -v: qvh's progress goes into the activity log, so a stuck activation can be diagnosed.
-        steps = [[self.binary, "activate", f"--udid={self.udid}", "-v"]]
+        # 1) trusted? (checked now, while usbmuxd still runs — qvh's own check is skipped later)
+        # 2) switch the iPhone into screen-capture mode with iCast's own, time-limited activation
+        #    (qvh's `activate` can wait forever for the iPhone to re-connect)
+        steps = [["idevicepair", "-u", self.udid, "validate"],
+                 [sys.executable, "-m", "icast.core.usbcap", "activate", self.udid]]
         # 2) Linux won't switch to that configuration while usbmuxd / ipheth hold the iPhone
         #    ("Could not retrieve config"), so release it for the duration of the cast.
         if os.path.exists(USB_HELPER):
@@ -239,6 +242,11 @@ class WiredBackend(Backend):
         return super().step_timed_out(argv, timeout, output)
 
     def step_failed(self, argv: list[str], code: int, output: str) -> str | None:
+        if argv[0] == "idevicepair":
+            if code == 0:
+                return None
+            return ("This computer is not trusted by the iPhone yet. Unlock the iPhone, tap “Trust”, "
+                    "enter the passcode, then press Start Wired again.")
         if argv[:2] == ["sudo", "-n"] and code != 0:
             if "password" in output.lower() or "not allowed" in output.lower():
                 return ("iCast needs its USB helper permission. Run scripts/install.sh once more, "

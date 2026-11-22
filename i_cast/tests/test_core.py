@@ -179,8 +179,12 @@ def test_wired_prepare_and_cleanup_steps(monkeypatch):
     import icast.backends.wired as wired
     b = WiredBackend(WiredSettings(), udid="00008120-001A2B3C")
     monkeypatch.setattr(wired.os.path, "exists", lambda p: p == wired.USB_HELPER)
-    assert b.prepare_steps() == [["qvh", "activate", "--udid=00008120-001A2B3C", "-v"],
+    import sys
+    assert b.prepare_steps() == [["idevicepair", "-u", "00008120-001A2B3C", "validate"],
+                                 [sys.executable, "-m", "icast.core.usbcap", "activate", "00008120-001A2B3C"],
                                  ["sudo", "-n", wired.USB_HELPER, "prepare", "00008120-001A2B3C"]]
+    assert "Trust" in b.step_failed(["idevicepair", "-u", "x", "validate"], 1, "ERROR: not paired")
+    assert b.step_failed(["idevicepair", "-u", "x", "validate"], 0, "SUCCESS: Validated pairing") is None
     # deactivate goes straight over USB (works even when usbmuxd lost the stuck iPhone), then restore
     assert b.cleanup_steps()[0] == ["env", "QVH_SKIP_PAIR_CHECK=1", "qvh", "deactivate", "--udid=00008120-001A2B3C"]
     assert b.cleanup_steps()[1][3] == "restore"
@@ -192,7 +196,7 @@ def test_wired_prepare_and_cleanup_steps(monkeypatch):
                                          "sudo: a password is required")
     assert b.step_failed(["qvh", "activate"], 0, '{"level":"info","msg":"ok"}') is None
     monkeypatch.setattr(wired.os.path, "exists", lambda p: False)
-    assert len(b.prepare_steps()) == 1  # helper not installed: activate only
+    assert len(b.prepare_steps()) == 2  # helper not installed: trust check + activation only
 
 
 def test_usb_helper_releases_only_that_iphone(tmp_path):
@@ -283,3 +287,60 @@ def test_stop_cancels_running_step_immediately():
     t0 = time.monotonic()
     assert run_steps([["sleep", "30"], ["echo", "never"]], b, lambda _l: None, cancel=cancel) == "Cancelled"
     assert time.monotonic() - t0 < 3
+
+
+# ---------------------------------------------------------------- iCast's own activation (usbcap)
+def _iface(cls, sub):
+    return bytes([9, 4, 0, 0, 2, cls, sub, 0, 0])
+
+
+NORMAL_DESC = bytes([18, 1] + [0] * 16) + bytes([9, 2, 0, 0, 1, 1, 0, 0x80, 250]) + _iface(0xFF, 0xFE)
+CAPTURE_DESC = NORMAL_DESC + bytes([9, 2, 0, 0, 1, 5, 0, 0x80, 250]) + _iface(0xFF, 0x2A)
+
+
+def _fake_iphone(root, devnum, desc, serial="00008120000915DC01B8201E"):
+    d = root / "bus/usb/devices/1-1"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "idVendor").write_text("05ac\n"); (d / "serial").write_text(serial + "\n")
+    (d / "busnum").write_text("1\n"); (d / "devnum").write_text(f"{devnum}\n")
+    (d / "descriptors").write_bytes(desc)
+    return d
+
+
+def test_usbcap_parses_capture_interface_and_ioctl_number():
+    import ctypes
+    from icast.core import usbcap
+    assert not usbcap.has_capture_interface(NORMAL_DESC)
+    assert usbcap.has_capture_interface(CAPTURE_DESC)
+    if ctypes.sizeof(ctypes.c_void_p) == 8:
+        assert usbcap.USBDEVFS_CONTROL == 0xC0185500   # <linux/usbdevice_fs.h> on 64-bit
+
+
+def test_usbcap_activate_waits_for_reconnect(tmp_path, monkeypatch):
+    import shutil, threading
+    from icast.core import usbcap
+    monkeypatch.setenv("ICAST_SYSFS", str(tmp_path))
+    _fake_iphone(tmp_path, 10, NORMAL_DESC)
+    sent = []
+
+    def sender(dev):           # the iPhone drops off the bus and comes back in capture mode
+        sent.append(dev.node.name)
+        shutil.rmtree(tmp_path / "bus/usb/devices/1-1")
+        threading.Timer(0.5, lambda: _fake_iphone(tmp_path, 11, CAPTURE_DESC)).start()
+
+    logs = []
+    assert usbcap.activate("00008120-000915DC01B8201E", timeout=5, log=logs.append, sender=sender) == 0
+    assert sent == ["010"] and any("re-connecting" in l for l in logs) and "Screen-capture mode is on" in logs[-1]
+    # already active -> no request sent again
+    assert usbcap.activate("00008120-000915DC01B8201E", timeout=5, log=logs.append, sender=sender) == 0
+    assert len(sent) == 1
+
+
+def test_usbcap_activate_gives_up_with_clear_message(tmp_path, monkeypatch):
+    from icast.core import usbcap
+    monkeypatch.setenv("ICAST_SYSFS", str(tmp_path))
+    _fake_iphone(tmp_path, 10, NORMAL_DESC)
+    logs = []
+    assert usbcap.activate("00008120-000915DC01B8201E", timeout=0.6, log=logs.append, sender=lambda d: None) == 6
+    assert logs[-1].startswith("FATAL:") and "ignored" in logs[-1]
+    assert usbcap.activate("FFFF", timeout=0.5, log=logs.append, sender=lambda d: None) == 3
