@@ -7,6 +7,7 @@ fullscreen in a single window with UxPlay's low-latency settings.
 
 from __future__ import annotations
 
+import sys
 from dataclasses import replace
 
 from icast.backends.wireless import WirelessBackend
@@ -33,10 +34,23 @@ class WiredAirPlayBackend(WirelessBackend):
         self.link = self.link_finder()
         if self.link is None:
             return "The iPhone's USB network link is not up. " + HOTSPOT_STEPS
-        if not self.link.ready:
-            return (f"The iPhone's USB link ({self.link.ifname}) has no address yet. Wait a few seconds; "
-                    "if it stays like this: " + HOTSPOT_STEPS)
-        return None
+        return None   # a missing address is waited for (and fixed) in prepare_steps
+
+    def prepare_steps(self) -> list[list[str]]:
+        steps = super().prepare_steps()          # stop leftover receivers
+        if self.link is not None and not self.link.ready:
+            # the link is there but has no address yet: wait for DHCP, nudge NetworkManager if needed
+            steps = [[sys.executable, "-m", "icast.core.usbnet", "wait", "20"]] + steps
+        return steps
+
+    def step_timeout(self, argv: list[str]) -> float:
+        return 30.0 if "icast.core.usbnet" in argv else super().step_timeout(argv)
+
+    def step_failed(self, argv: list[str], code: int, output: str) -> str | None:
+        if "icast.core.usbnet" in argv and code != 0:
+            fatal = [l for l in output.splitlines() if l.startswith("FATAL:")]
+            return fatal[-1].removeprefix("FATAL: ") if fatal else "The iPhone's USB network did not come up."
+        return super().step_failed(argv, code, output)
 
     @property
     def instructions(self) -> str:

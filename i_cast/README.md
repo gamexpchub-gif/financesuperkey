@@ -125,6 +125,7 @@ iCast resolves this per session:
 | iPhone not listed under USB | Unlock the phone, tap *Trust*, run `sudo systemctl restart usbmuxd`, try another cable |
 | "Not trusted" | Click *Trust this computer* in iCast and accept on the iPhone |
 | No sound | Wireless: set *Audio output* to `pulsesink` or `pipewiresink`. Wired: check *Play iPhone sound* |
+| Wired (AirPlay): “USB link (eth0) has no address” | iCast now waits up to 20 s and asks NetworkManager to connect. If the iPhone isn't serving (cable carrier off): Settings → Personal Hotspot → “Allow Others to Join”, keep that screen open a few seconds. Otherwise: `nmcli device connect eth0`, or toggle Personal Hotspot |
 | Wired: stuck on “Preparing iPhone for capture…” | iCast now gives up after 25 s with advice. Unplug and re-plug the iPhone, unlock it, Start Wired again. The log contains qvh's detailed (`-v`) output — send it if it repeats |
 | Wired: “device not found, is it still connected? … /var/run/usbmuxd” | Old qvh. Run `scripts/install.sh` — it builds the pinned, patched qvh (`scripts/build-qvh.sh`) |
 | Wired: “interface claimed by usbfs while 'qvh' sets config” (dmesg) | usbmuxd is holding the iPhone. Run `scripts/install.sh` (installs the USB helper), re-plug, Start Wired |

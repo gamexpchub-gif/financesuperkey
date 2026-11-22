@@ -423,8 +423,11 @@ def test_wired_airplay_backend(tmp_path):
     from icast.core.usbnet import UsbLink
     b = WiredAirPlayBackend(WirelessSettings(fullscreen=False, low_latency=False), link_finder=lambda: None)
     assert "Personal Hotspot" in b.preflight()
-    b = WiredAirPlayBackend(WirelessSettings(), link_finder=lambda: UsbLink("enx1", None))
-    assert "no address yet" in b.preflight()
+    b = WiredAirPlayBackend(WirelessSettings(), link_finder=lambda: UsbLink("eth0", None), use_viewer=False)
+    assert b.preflight() is None                                  # no address yet -> wait in prepare
+    assert b.prepare_steps()[0][-3:] == ["icast.core.usbnet", "wait", "20"]
+    assert "Personal Hotspot" in b.step_failed(["python", "-m", "icast.core.usbnet", "wait"], 6,
+        "Waiting…\nFATAL: the iPhone is not serving its USB network — on the iPhone open Settings → Personal Hotspot")
     b = WiredAirPlayBackend(WirelessSettings(fullscreen=False), link_finder=lambda: UsbLink("enx1", "172.20.10.2"),
                             use_viewer=False)
     assert b.preflight() is None
@@ -510,3 +513,37 @@ def test_viewer_streaming_detection_for_mpv_and_ffplay():
     b = WirelessBackend(WirelessSettings(), use_viewer=False)
     assert b.classify("[viewer]  (+) Video --vid=1 (h264 1170x2532)") == CastState.STREAMING
     assert b.classify("[viewer] Input #0, sdp, from 'x.sdp':") == CastState.STREAMING
+
+
+def test_usb_network_wait_nudges_networkmanager_and_explains(tmp_path, monkeypatch):
+    from icast.core import usbnet
+    from icast.core.usbnet import UsbLink
+    monkeypatch.setenv("ICAST_SYSFS", str(tmp_path))
+    clock = {"t": 0.0}
+    monkeypatch.setattr("time.monotonic", lambda: clock["t"])
+
+    def tick(_s):
+        clock["t"] += 0.5
+
+    # address arrives after NetworkManager is nudged
+    calls, logs = [], []
+    def finder():
+        return UsbLink("eth0", "172.20.10.2" if calls else None)
+    assert usbnet.wait_for_address(20, log=logs.append, finder=finder,
+                                   connect=lambda n: calls.append(n) or "ok", sleep=tick) == 0
+    assert calls == ["eth0"] and "172.20.10.2" in logs[-1]
+
+    # never gets an address, iPhone side not serving (carrier 0) -> Personal Hotspot advice
+    (tmp_path / "class/net/eth0").mkdir(parents=True)
+    (tmp_path / "class/net/eth0/carrier").write_text("0\n")
+    clock["t"] = 0.0
+    logs.clear()
+    assert usbnet.wait_for_address(5, log=logs.append, finder=lambda: UsbLink("eth0", None),
+                                   connect=lambda n: "ok", sleep=tick) == 6
+    assert "Personal Hotspot" in logs[-1]
+    # cable side active but no DHCP -> NetworkManager advice
+    (tmp_path / "class/net/eth0/carrier").write_text("1\n")
+    clock["t"] = 0.0
+    assert usbnet.wait_for_address(5, log=logs.append, finder=lambda: UsbLink("eth0", None),
+                                   connect=lambda n: "ok", sleep=tick) == 6
+    assert "nmcli device connect eth0" in logs[-1]

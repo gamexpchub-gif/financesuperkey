@@ -112,8 +112,7 @@ class CastController(QObject):
         blocker = backend.preflight()
         if blocker:
             self._last_error = blocker
-            self.log_line.emit(f"⚠ {blocker}")
-            self._finish(blocker, failed=True)
+            self._finish(blocker, failed=True)        # the window logs the message once
             return
         try:
             argv = backend.build_command()
@@ -140,8 +139,7 @@ class CastController(QObject):
         if error:
             self._pending_argv = None
             self._last_error = error
-            self.log_line.emit(f"⚠ {error}")
-            self._finish(error, failed=True)
+            self._finish(error, failed=True)          # the window logs the message once
             return
         backend = self.backend
         assert backend is not None
