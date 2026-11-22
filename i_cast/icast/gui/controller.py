@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import threading
 import time
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Signal
@@ -16,13 +17,15 @@ from icast.core.process import ManagedProcess
 class _StepRunner(QRunnable):
     """Runs short prepare/cleanup commands off the UI thread."""
 
-    def __init__(self, steps: list[list[str]], backend: Backend, log, done, best_effort: bool = False) -> None:
+    def __init__(self, steps: list[list[str]], backend: Backend, log, done, best_effort: bool = False,
+                 cancel: threading.Event | None = None) -> None:
         super().__init__()
         self.steps, self.backend, self.log, self.done = steps, backend, log, done
-        self.best_effort = best_effort
+        self.best_effort, self.cancel = best_effort, cancel
 
     def run(self) -> None:
-        self.done.emit(run_steps(self.steps, self.backend, self.log.emit, best_effort=self.best_effort))
+        self.done.emit(run_steps(self.steps, self.backend, self.log.emit, best_effort=self.best_effort,
+                                 cancel=self.cancel))
 
 
 class CastController(QObject):
@@ -57,6 +60,7 @@ class CastController(QObject):
         self.cleaning_up = False
         self._last_error = ""
         self._retried = False
+        self._cancel = threading.Event()
         self._line_from_thread.connect(self._on_line)
         self._exit_from_thread.connect(self._on_exit)
         self._companion_exit.connect(self._on_companion_exit)
@@ -111,13 +115,16 @@ class CastController(QObject):
         if steps:
             self._needs_cleanup = backend
             self._set(CastState.STARTING, backend.prepare_label)
-            QThreadPool.globalInstance().start(_StepRunner(steps, backend, self.log_line, self._prepare_done))
+            self._cancel = threading.Event()
+            QThreadPool.globalInstance().start(_StepRunner(steps, backend, self.log_line, self._prepare_done,
+                                                           cancel=self._cancel))
         else:
             self._set(CastState.STARTING, backend.name)
             self._after_prepare("")
 
     def _after_prepare(self, error: str) -> None:
-        if self._pending_argv is None:          # user pressed Stop while preparing
+        if self._pending_argv is None or error == "Cancelled":   # user pressed Stop while preparing
+            self._pending_argv = None
             self._finish("Cancelled", failed=False)
             return
         if error:
@@ -197,6 +204,7 @@ class CastController(QObject):
     def stop(self) -> None:
         if self._pending_argv is not None:
             self._pending_argv = None   # prepare / viewer wait will notice and wind down
+            self._cancel.set()          # kill a running prepare step right away
             self.log_line.emit("Stopping…")
             return
         if self.proc:
@@ -300,7 +308,8 @@ class CastController(QObject):
 
     def _after_cleanup(self, error: str) -> None:
         self.cleaning_up = False
-        self.log_line.emit("iPhone handed back to the system" if not error else f"Cleanup: {error}")
+        self.log_line.emit("iPhone handed back to the system" if not error
+                           else "iPhone handed back (some cleanup steps had nothing to undo)")
 
 
 class _DeviceScan(QRunnable):

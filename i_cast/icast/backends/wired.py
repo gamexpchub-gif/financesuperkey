@@ -195,8 +195,9 @@ class WiredBackend(Backend):
     def prepare_steps(self) -> list[list[str]]:
         if not self.udid:
             return []
-        # 1) let the iPhone expose its screen-capture USB configuration (it re-connects once)
-        steps = [[self.binary, "activate", f"--udid={self.udid}"]]
+        # 1) let the iPhone expose its screen-capture USB configuration (it re-connects once).
+        #    -v: qvh's progress goes into the activity log, so a stuck activation can be diagnosed.
+        steps = [[self.binary, "activate", f"--udid={self.udid}", "-v"]]
         # 2) Linux won't switch to that configuration while usbmuxd / ipheth hold the iPhone
         #    ("Could not retrieve config"), so release it for the duration of the cast.
         if os.path.exists(USB_HELPER):
@@ -219,13 +220,23 @@ class WiredBackend(Backend):
     def cleanup_steps(self) -> list[list[str]]:
         if not self.udid:
             return []
-        steps = []
+        # 1) switch the iPhone back to normal USB mode — straight over USB (patched qvh), so this also
+        #    rescues an iPhone that usbmuxd can no longer see because it is stuck half-way in capture mode
+        # 2) hand it back to usbmuxd / the tethering driver
+        steps = [["env", "QVH_SKIP_PAIR_CHECK=1", self.binary, "deactivate", f"--udid={self.udid}"]]
         if os.path.exists(USB_HELPER):
-            # usbmuxd first: every unpatched qvh command (deactivate included) needs it
             steps.append(["sudo", "-n", USB_HELPER, "restore", self.udid])
-            steps.append(["sleep", "1"])
-        steps.append([self.binary, "deactivate", f"--udid={self.udid}"])
         return steps
+
+    def step_timeout(self, argv: list[str]) -> float:
+        return 25.0 if "activate" in argv else 45.0
+
+    def step_timed_out(self, argv: list[str], timeout: float, output: str) -> str:
+        if "activate" in argv:
+            return ("The iPhone did not come back in screen-capture mode within "
+                    f"{timeout:.0f} s. Unplug the iPhone, plug it back in, unlock it and press Start Wired again. "
+                    "If it happens again: Connection History → Copy log, and send the log.")
+        return super().step_timed_out(argv, timeout, output)
 
     def step_failed(self, argv: list[str], code: int, output: str) -> str | None:
         if argv[:2] == ["sudo", "-n"] and code != 0:
@@ -237,7 +248,7 @@ class WiredBackend(Backend):
             human = self.humanize(line.strip())
             if human.startswith("FATAL:"):
                 return self.explain(human)
-        if code != 0 and argv[1:2] == ["activate"]:
+        if code != 0 and "activate" in argv:
             last = output.strip().splitlines()[-1] if output.strip() else f"exit code {code}"
             return f"Could not switch the iPhone into capture mode: {self.explain(self.humanize(last))}"
         return None

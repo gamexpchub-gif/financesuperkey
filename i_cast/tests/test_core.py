@@ -179,10 +179,11 @@ def test_wired_prepare_and_cleanup_steps(monkeypatch):
     import icast.backends.wired as wired
     b = WiredBackend(WiredSettings(), udid="00008120-001A2B3C")
     monkeypatch.setattr(wired.os.path, "exists", lambda p: p == wired.USB_HELPER)
-    assert b.prepare_steps() == [["qvh", "activate", "--udid=00008120-001A2B3C"],
+    assert b.prepare_steps() == [["qvh", "activate", "--udid=00008120-001A2B3C", "-v"],
                                  ["sudo", "-n", wired.USB_HELPER, "prepare", "00008120-001A2B3C"]]
-    # usbmuxd comes back first; qvh deactivate (which needs usbmuxd) runs last
-    assert b.cleanup_steps()[0][3] == "restore" and b.cleanup_steps()[-1][:2] == ["qvh", "deactivate"]
+    # deactivate goes straight over USB (works even when usbmuxd lost the stuck iPhone), then restore
+    assert b.cleanup_steps()[0] == ["env", "QVH_SKIP_PAIR_CHECK=1", "qvh", "deactivate", "--udid=00008120-001A2B3C"]
+    assert b.cleanup_steps()[1][3] == "restore"
     assert b.engine_env() == {"QVH_SKIP_PAIR_CHECK": "1"}
     # fatal output from qvh activate, crash of activate, and missing sudo permission are all reported
     assert "permission" in b.step_failed(["qvh", "activate"], 0, QVH_FATAL).lower()
@@ -259,3 +260,26 @@ def test_cleanup_runs_every_step_even_after_a_failure():
     assert "second" in logs and err                       # kept going, still reports the problem
     logs.clear()
     assert run_steps(steps, b, logs.append) and "second" not in logs   # prepare stops at the first error
+
+
+def test_hung_activate_is_killed_with_clear_advice(monkeypatch):
+    import time
+    from icast.backends.base import run_steps
+    b = WiredBackend(WiredSettings(), udid="x")
+    monkeypatch.setattr(b, "step_timeout", lambda argv: 0.5)
+    logs = []
+    t0 = time.monotonic()
+    err = run_steps([["sh", "-c", "echo waiting for device; sleep 30", "activate"]], b, logs.append)
+    assert time.monotonic() - t0 < 3
+    assert "Unplug the iPhone" in err and "waiting for device" in logs   # output streamed live
+
+
+def test_stop_cancels_running_step_immediately():
+    import threading, time
+    from icast.backends.base import run_steps
+    b = WiredBackend(WiredSettings(), udid="x")
+    cancel = threading.Event()
+    threading.Timer(0.3, cancel.set).start()
+    t0 = time.monotonic()
+    assert run_steps([["sleep", "30"], ["echo", "never"]], b, lambda _l: None, cancel=cancel) == "Cancelled"
+    assert time.monotonic() - t0 < 3

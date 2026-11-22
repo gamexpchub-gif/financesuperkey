@@ -70,6 +70,12 @@ class Backend(ABC):
         """Plain-language error if a prepare step failed fatally, else None."""
         return None
 
+    def step_timeout(self, argv: list[str]) -> float:
+        return 45.0
+
+    def step_timed_out(self, argv: list[str], timeout: float, output: str) -> str:
+        return f"'{' '.join(argv[:2])}' did not finish within {timeout:.0f} s."
+
     def explain(self, line: str) -> str:
         """Plain-language reason + fix for an error line (falls back to the line itself)."""
         return line
@@ -95,29 +101,82 @@ def split_extra(extra: str) -> list[str]:
         return []
 
 
-def run_steps(steps: list[list[str]], backend: Backend, log, best_effort: bool = False) -> str:
+class StepTimeout(Exception):
+    pass
+
+
+def _run_one(argv: list[str], log, humanize, timeout: float, cancel) -> tuple[int, str]:
+    """Run one step, streaming its output live; kill it on timeout or cancel."""
+    import os
+    import signal
+    import threading
+    import time
+
+    proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                            text=True, bufsize=1, start_new_session=True)
+    lines: list[str] = []
+
+    def pump() -> None:
+        assert proc.stdout is not None
+        for raw in proc.stdout:
+            raw = raw.rstrip()
+            if raw:
+                lines.append(raw)
+                log(humanize(raw))
+
+    reader = threading.Thread(target=pump, daemon=True)
+    reader.start()
+    deadline = time.monotonic() + timeout
+    reason = ""
+    while proc.poll() is None:
+        if cancel is not None and cancel.is_set():
+            reason = "cancelled"
+        elif time.monotonic() > deadline:
+            reason = "timeout"
+        if reason:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            proc.wait()
+            break
+        time.sleep(0.05)
+    reader.join(timeout=1)
+    if reason == "timeout":
+        raise StepTimeout("\n".join(lines))
+    if reason == "cancelled":
+        return -1, "cancelled"
+    return proc.returncode, "\n".join(lines)
+
+
+def run_steps(steps: list[list[str]], backend: Backend, log, best_effort: bool = False, cancel=None) -> str:
     """Run steps in order; return "" on success or a plain-language error.
 
-    best_effort=True (cleanup) runs every step even if an earlier one failed.
+    Output is streamed to ``log`` as it happens. best_effort=True (cleanup) runs every step even if an
+    earlier one failed and reports problems quietly. ``cancel`` (threading.Event) stops at once.
     """
     first_error = ""
     for argv in steps:
+        if cancel is not None and cancel.is_set():
+            return "Cancelled"
         log(f"$ {' '.join(argv)}")
         if not shutil.which(argv[0]):
             err = f"'{argv[0]}' is not installed. Run scripts/install.sh."
         else:
+            timeout = backend.step_timeout(argv)
             try:
-                res = subprocess.run(argv, capture_output=True, text=True, timeout=45, stdin=subprocess.DEVNULL)
-            except (OSError, subprocess.TimeoutExpired) as exc:
-                err = f"{argv[0]} did not finish: {exc}"
+                code, out = _run_one(argv, log, backend.humanize, timeout, cancel)
+            except StepTimeout as exc:
+                err = backend.step_timed_out(argv, timeout, str(exc))
+            except OSError as exc:
+                err = f"{argv[0]} could not start: {exc}"
             else:
-                out = (res.stdout or "") + (res.stderr or "")
-                for line in out.strip().splitlines()[-12:]:
-                    log(backend.humanize(line.strip()))
-                err = backend.step_failed(argv, res.returncode, out) or ""
+                if out == "cancelled" and code == -1:
+                    return "Cancelled"
+                err = backend.step_failed(argv, code, out) or ""
         if err:
             if not best_effort:
                 return err
-            log(f"⚠ {err}")
+            log(f"(cleanup) {err}")
             first_error = first_error or err
     return first_error
