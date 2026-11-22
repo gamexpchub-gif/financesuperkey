@@ -1,0 +1,103 @@
+#!/bin/bash
+# icast-usb — root helper that gives qvh exclusive use of ONE iPhone during a wired cast.
+#
+# Linux refuses to switch an iPhone into its screen-capture USB configuration while any of its
+# interfaces is held (usbmuxd, or the ipheth tethering driver) -> qvh: "Could not retrieve config".
+#   prepare <udid>   pause usbmuxd and release the iPhone's USB interfaces
+#   resume <udid>    restart usbmuxd once qvh holds the capture interface (macOS-like: usbmux and
+#                    screen capture side by side; the iPhone may wait for a live usbmux host)
+#   restore <udid>   software re-plug of the iPhone (clean state) and restart usbmuxd
+#   recover          restart usbmuxd and software re-plug any iPhone usbmuxd can't see
+#                    (e.g. one left in capture mode after iCast was killed mid-cast)
+# Installed to /usr/local/libexec/icast-usb (root-owned); iCast calls it with `sudo -n`.
+set -uo pipefail
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+# Tests point this at a fake tree; sudo's env_reset strips it in real use.
+SYSFS="${ICAST_SYSFS:-/sys}"
+
+cmd="${1:-}"
+udid="${2:-}"
+
+apple_devices() {
+  local d
+  for d in "$SYSFS"/bus/usb/devices/*; do
+    [[ -f "$d/idVendor" && -f "$d/serial" ]] || continue
+    [[ "$(cat "$d/idVendor")" == "05ac" ]] && echo "$d"
+  done
+}
+
+find_dev() {
+  local d s
+  for d in $(apple_devices); do
+    s="$(tr -d '\0' < "$d/serial")"; s="${s//-/}"
+    [[ "${s^^}" == "$want" ]] && { echo "$d"; return 0; }
+  done
+  return 1
+}
+
+# Same effect as pulling the cable and plugging it back in: the kernel drops the device and
+# enumerates it from scratch, so the iPhone comes back in normal mode and usbmuxd picks it up.
+replug() {
+  local dev="$1"
+  [[ -w "$dev/authorized" ]] || return 0
+  echo 0 > "$dev/authorized" 2>/dev/null || return 0
+  sleep 1
+  echo 1 > "$dev/authorized" 2>/dev/null || true
+  echo "icast-usb: re-plugged $(basename "$dev")"
+}
+
+start_usbmuxd() {
+  systemctl unmask --runtime usbmuxd.service >/dev/null 2>&1 || true
+  systemctl start usbmuxd.service >/dev/null 2>&1 || true
+}
+
+if [[ "$cmd" == "recover" ]]; then
+  start_usbmuxd
+  for dev in $(apple_devices); do replug "$dev"; done
+  sleep 1
+  start_usbmuxd
+  echo "icast-usb: usbmuxd restored"
+  exit 0
+fi
+
+if [[ ! "$udid" =~ ^[0-9A-Fa-f-]{8,48}$ ]]; then
+  echo "icast-usb: invalid device id" >&2
+  exit 2
+fi
+want="${udid//-/}"; want="${want^^}"
+
+case "$cmd" in
+  prepare)
+    systemctl mask --runtime usbmuxd.service >/dev/null 2>&1 || true
+    systemctl stop usbmuxd.service >/dev/null 2>&1 || true
+    pkill -x usbmuxd >/dev/null 2>&1 || true
+    # the iPhone re-connects after switching on capture mode; give it a few seconds
+    dev=""
+    for _ in $(seq 1 50); do dev="$(find_dev)" && break; sleep 0.1; done
+    [[ -n "$dev" ]] || { echo "icast-usb: iPhone $udid not found on USB" >&2; exit 3; }
+    for intf in "$dev":*; do
+      [[ -e "$intf/driver" ]] || continue
+      drv="$(basename "$(readlink -f "$intf/driver")")"
+      echo "$(basename "$intf")" > "$intf/driver/unbind" 2>/dev/null \
+        && echo "icast-usb: released $(basename "$intf") from $drv"
+    done
+    echo "icast-usb: iPhone ready for exclusive capture"
+    ;;
+  resume)
+    start_usbmuxd
+    echo "icast-usb: usbmuxd resumed next to the capture session"
+    ;;
+  restore)
+    systemctl unmask --runtime usbmuxd.service >/dev/null 2>&1 || true
+    if dev="$(find_dev)"; then
+      replug "$dev"
+    fi
+    sleep 1
+    start_usbmuxd
+    echo "icast-usb: iPhone returned to the system"
+    ;;
+  *)
+    echo "usage: icast-usb prepare|resume|restore <udid> | recover" >&2
+    exit 2
+    ;;
+esac

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=iCast
+GenericName=iPhone Screen Cast
+Comment=Mirror your iPhone screen over USB or Wi-Fi (AirPlay)
+Exec=icast
+Icon=icast
+Terminal=false
+Categories=AudioVideo;Video;Utility;
+Keywords=iphone;airplay;mirror;screen;cast;usb;
