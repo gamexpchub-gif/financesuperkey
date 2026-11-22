@@ -73,6 +73,35 @@ def port_listening(port: int) -> bool:
     return False
 
 
+def usbmuxd_running() -> bool:
+    try:
+        return subprocess.run(["pgrep", "-x", "usbmuxd"], capture_output=True, timeout=3).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def usbmuxd_masked() -> bool:
+    """True when a previous session left usbmuxd paused (runtime-masked)."""
+    if not shutil.which("systemctl"):
+        return False
+    try:
+        out = subprocess.run(["systemctl", "is-enabled", "usbmuxd.service"], capture_output=True, text=True, timeout=3)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return out.stdout.strip().startswith("masked")
+
+
+def recover_usb() -> str:
+    """Self-heal at startup: restart usbmuxd if iCast left it paused. Returns a log line or ''."""
+    if os.path.exists(USB_HELPER) and usbmuxd_masked():
+        try:
+            subprocess.run(["sudo", "-n", USB_HELPER, "recover"], capture_output=True, timeout=20)
+        except (OSError, subprocess.TimeoutExpired):
+            return "Could not restart usbmuxd automatically. Run: sudo systemctl unmask --runtime usbmuxd"
+        return "Restored usbmuxd left paused by an earlier session"
+    return ""
+
+
 def pulse_server_running() -> bool:
     """True when a PulseAudio / PipeWire-Pulse server socket exists for this user."""
     if os.environ.get("PULSE_SERVER"):
@@ -86,6 +115,7 @@ class WiredBackend(Backend):
     binary = "qvh"
     companion_delay_s = 0.6      # fallback wait when /proc/net/tcp is unavailable
     companion_timeout_s = 10.0   # max wait for the viewer to start listening
+    prepare_label = "Preparing iPhone for capture…"
 
     # Matched against humanize()d lines. qvh logs logrus JSON ({"level","msg"}) and prints fatal
     # problems as {"error_message", "original_error"}; ffplay (viewer) announces the stream with "Input #0".
@@ -160,6 +190,15 @@ class WiredBackend(Backend):
         if os.path.exists(USB_HELPER):
             steps.append(["sudo", "-n", USB_HELPER, "prepare", self.udid])
         return steps
+
+    def preflight(self) -> str | None:
+        """Problems that make a wired cast impossible, found before touching the iPhone."""
+        if self.s.output != "record" and not shutil.which(self.player) and self.s.output == "fullscreen":
+            return "ffplay (from ffmpeg) is missing — run scripts/install.sh."
+        if not os.path.exists(USB_HELPER) and usbmuxd_running():
+            return ("iCast's USB helper is not installed, so Linux will not let iCast take the iPhone "
+                    "(“interface claimed by usbfs”). Run scripts/install.sh once, re-plug the iPhone, try again.")
+        return None
 
     def cleanup_steps(self) -> list[list[str]]:
         if not self.udid:

@@ -41,6 +41,19 @@ class Backend(ABC):
         """True once the companions can accept the engine (e.g. the viewer is listening)."""
         return True
 
+    def preflight(self) -> str | None:
+        """Plain-language blocker found before starting anything, else None."""
+        return None
+
+    # When the engine exits because of a recoverable problem, the backend may ask for exactly one
+    # automatic restart (e.g. AirPlay name conflict -> restart with a fresh device ID).
+    wants_retry: bool = False
+    prepare_label: str = "Preparing…"
+
+    def prepare_retry(self) -> str:
+        """Adjust for the automatic retry; returns a log line describing what changed."""
+        return ""
+
     def prepare_steps(self) -> list[list[str]]:
         """Short commands run (in order, off the UI thread) before the viewer and engine start."""
         return []

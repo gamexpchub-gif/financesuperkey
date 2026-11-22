@@ -70,11 +70,14 @@ the phone picture centered and its shape kept.
 
 | Problem | Fix |
 |---|---|
+| Wireless: “DNSServiceRegister … NameConflict” | Fixed automatically: iCast stops leftover receivers before starting and, if the name is still taken, restarts once with a fresh device ID |
 | iCast doesn't appear in Screen Mirroring | `sudo systemctl enable --now avahi-daemon`; same Wi‑Fi; disable "client isolation" on the router; turn on *Fixed ports* and allow 7100‑7102 + 5353/udp |
 | Choppy wireless video | Use 5 GHz Wi‑Fi, try 1280×720 or 30 fps, keep *Low‑latency mode* on |
 | iPhone not listed under USB | Unlock the phone, tap *Trust*, run `sudo systemctl restart usbmuxd`, try another cable |
 | "Not trusted" | Click *Trust this computer* in iCast and accept on the iPhone |
 | No sound | Wireless: set *Audio output* to `pulsesink` or `pipewiresink`. Wired: check *Play iPhone sound* |
+| Wired: “interface claimed by usbfs while 'qvh' sets config” (dmesg) | usbmuxd is holding the iPhone. Run `scripts/install.sh` (installs the USB helper), re-plug, Start Wired |
+| Wired: no iPhone listed after a crash | iCast restores usbmuxd at startup; or run `sudo systemctl unmask --runtime usbmuxd && sudo systemctl start usbmuxd` |
 | Wired: “No permission to use the iPhone over USB” | Run `scripts/install.sh` again, then unplug and re-plug the iPhone |
 | Wired: “didn't switch into capture mode” / “Could not retrieve config” | Press **Reset USB** (or `icast reset-usb`), re-plug, unlock, Start Wired. iCast pauses usbmuxd and the iPhone tethering driver while casting, because Linux won't switch the iPhone's USB mode while they hold it |
 | Wired picture stutters | Choose *Smooth* latency in Wired Cast, or close heavy apps |

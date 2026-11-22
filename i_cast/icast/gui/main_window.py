@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 
-from PySide6.QtCore import QPointF, QRectF, Qt, QTimer
+from PySide6.QtCore import QPointF, QRectF, QRunnable, Qt, QThreadPool, QTimer
 from PySide6.QtGui import QAction, QColor, QFont, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QButtonGroup, QCheckBox, QComboBox, QFileDialog, QGridLayout, QHBoxLayout, QHeaderView,
@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
 
 from icast import __app_name__, __version__
 from icast.backends.base import CastState, run_steps
-from icast.backends.wired import WiredBackend
+from icast.backends.wired import WiredBackend, recover_usb
 from icast.backends.wireless import WirelessBackend
 from icast.core import deps, devices, history
 from icast.core.config import config_dir, AUDIO_SINKS, FLIPS, FRAME_RATES, RESOLUTIONS, ROTATIONS, VIDEO_SINKS, AppSettings
@@ -245,6 +245,19 @@ class StatusStrip(GlassCard):
         self.c_text.setText(f"Connection: {text}")
 
 
+class _Recover(QRunnable):
+    """Startup self-heal: bring usbmuxd back if an earlier session left it paused."""
+
+    def __init__(self, log) -> None:
+        super().__init__()
+        self.log = log
+
+    def run(self) -> None:
+        msg = recover_usb()
+        if msg:
+            self.log.emit(msg)
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -307,7 +320,8 @@ class MainWindow(QMainWindow):
         self._clock.start()
         self._scan_timer = QTimer(self, interval=3000, timeout=self.watcher.scan)
         self._scan_timer.start()
-        self.watcher.scan()
+        QThreadPool.globalInstance().start(_Recover(self.ctrl.log_line))
+        QTimer.singleShot(1500, self.watcher.scan)
         self.go(0)
         self._on_state("idle", "")
 

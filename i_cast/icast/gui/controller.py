@@ -55,6 +55,7 @@ class CastController(QObject):
         self._needs_cleanup: Backend | None = None
         self.cleaning_up = False
         self._last_error = ""
+        self._retried = False
         self._line_from_thread.connect(self._on_line)
         self._exit_from_thread.connect(self._on_exit)
         self._companion_exit.connect(self._on_companion_exit)
@@ -92,6 +93,13 @@ class CastController(QObject):
             self._set(CastState.ERROR, f"'{backend.binary}' is not installed — run scripts/install.sh")
             return
         self.backend = backend
+        self._retried = False
+        blocker = backend.preflight()
+        if blocker:
+            self._last_error = blocker
+            self.log_line.emit(f"⚠ {blocker}")
+            self._finish(blocker, failed=True)
+            return
         try:
             argv = backend.build_command()
         except OSError as exc:
@@ -101,7 +109,7 @@ class CastController(QObject):
         steps = backend.prepare_steps()
         if steps:
             self._needs_cleanup = backend
-            self._set(CastState.STARTING, "Preparing iPhone for capture…")
+            self._set(CastState.STARTING, backend.prepare_label)
             QThreadPool.globalInstance().start(_StepRunner(steps, backend, self.log_line, self._prepare_done))
         else:
             self._set(CastState.STARTING, backend.name)
@@ -248,6 +256,18 @@ class CastController(QObject):
         self.log_line.emit(f"Engine exited (code {code})")
         backend, self.proc = self.backend, None
         self._stop_companions()
+        if backend is not None and backend.wants_retry and not self._retried:
+            self._retried = True
+            self.log_line.emit(backend.prepare_retry())
+            self._last_error = ""
+            try:
+                self._pending_argv = backend.build_command()
+            except OSError as exc:
+                self._finish(str(exc), failed=True)
+                return
+            self._set(CastState.STARTING, "Restarting receiver with a fresh device ID…")
+            self._after_prepare("")
+            return
         mux = getattr(backend, "mux_command", lambda: None)()
         if mux and shutil.which("ffmpeg"):
             subprocess.run(mux, capture_output=True)

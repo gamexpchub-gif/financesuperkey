@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 
 from PySide6.QtCore import Qt
@@ -12,6 +13,9 @@ from icast.gui import theme
 
 
 def run(argv: list[str] | None = None) -> int:
+    # harmless desktop-portal notice on some GNOME/KDE setups; keep the terminal clean
+    rules = os.environ.get("QT_LOGGING_RULES", "")
+    os.environ["QT_LOGGING_RULES"] = ";".join(filter(None, [rules, "qt.qpa.services=false"]))
     QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     app = QApplication.instance() or QApplication(argv or sys.argv)
     app.setApplicationName(__app_name__)

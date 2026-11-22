@@ -215,3 +215,30 @@ def test_usb_helper_releases_only_that_iphone(tmp_path):
     assert (tmp_path / "drivers/usbhid/unbind").read_text() == ""          # other devices untouched
     bad = subprocess.run(["bash", str(helper), "prepare", "x; rm -rf /"], env=env, capture_output=True, text=True)
     assert bad.returncode == 2
+
+
+UXPLAY_CONFLICT = "*** ERROR: DNSServiceRegister call returned kDNSServiceErr_NameConflict"
+
+
+def test_wireless_cleans_stale_receiver_and_retries_on_name_conflict():
+    import os
+    b = WirelessBackend(WirelessSettings())
+    assert b.prepare_steps()[0] == ["pkill", "-u", str(os.getuid()), "-x", "uxplay"]
+    assert b.classify(UXPLAY_CONFLICT) == CastState.ERROR and b.wants_retry
+    assert "fresh device ID" in b.explain(UXPLAY_CONFLICT)
+    b.prepare_retry()
+    argv = b.build_command()
+    assert "-m" in argv and "-nh" not in argv and not b.wants_retry
+    b.classify(UXPLAY_CONFLICT)
+    assert not b.wants_retry          # only one automatic retry
+    assert "avahi" in b.explain("*** ERROR: DNSServiceRegister call returned kDNSServiceErr_Unknown").lower()
+
+
+def test_wired_preflight_requires_helper_when_usbmuxd_holds_phone(monkeypatch):
+    import icast.backends.wired as wired
+    monkeypatch.setattr(wired.shutil, "which", lambda n: f"/usr/bin/{n}")
+    monkeypatch.setattr(wired, "usbmuxd_running", lambda: True)
+    monkeypatch.setattr(wired.os.path, "exists", lambda p: False)
+    assert "install.sh" in WiredBackend(WiredSettings(), udid="x").preflight()
+    monkeypatch.setattr(wired.os.path, "exists", lambda p: p == wired.USB_HELPER)
+    assert WiredBackend(WiredSettings(), udid="x").preflight() is None

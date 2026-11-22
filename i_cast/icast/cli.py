@@ -73,6 +73,10 @@ def _run_backend(backend, label: str) -> int:
     if missing:
         print(f"'{backend.binary}' not found. Run: icast doctor")
         return 127
+    blocker = backend.preflight()
+    if blocker:
+        print(_c("bad", f"✘ {blocker}"))
+        return 1
     argv = backend.build_command()
     print(_c("b", f"▶ {label}"), _c("dim", " ".join(argv)))
     err = run_steps(backend.prepare_steps(), backend, lambda l: print(_c("dim", f"  {l}")))
@@ -81,7 +85,11 @@ def _run_backend(backend, label: str) -> int:
         run_steps(backend.cleanup_steps(), backend, lambda l: print(_c("dim", f"  {l}")))
         return 1
     try:
-        return _run_engine(backend, argv)
+        code = _run_engine(backend, argv)
+        if backend.wants_retry:
+            print(_c("b", "↻ " + backend.prepare_retry()))
+            code = _run_engine(backend, backend.build_command())
+        return code
     finally:
         run_steps(backend.cleanup_steps(), backend, lambda l: print(_c("dim", f"  {l}")))
 
