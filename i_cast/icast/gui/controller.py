@@ -14,6 +14,14 @@ from icast.core import devices, history
 from icast.core.process import ManagedProcess
 
 
+def safe_emit(signal, *args) -> None:
+    """Emit from a worker thread; silently drop it if the receiver is already gone (app quitting)."""
+    try:
+        signal.emit(*args)
+    except RuntimeError:
+        pass
+
+
 class _StepRunner(QRunnable):
     """Runs short prepare/cleanup commands off the UI thread."""
 
@@ -24,8 +32,9 @@ class _StepRunner(QRunnable):
         self.best_effort, self.cancel = best_effort, cancel
 
     def run(self) -> None:
-        self.done.emit(run_steps(self.steps, self.backend, self.log.emit, best_effort=self.best_effort,
-                                 cancel=self.cancel))
+        result = run_steps(self.steps, self.backend, lambda line: safe_emit(self.log, line),
+                           best_effort=self.best_effort, cancel=self.cancel)
+        safe_emit(self.done, result)
 
 
 class CastController(QObject):
@@ -138,8 +147,8 @@ class CastController(QObject):
         self.companions = []
         for cargv in backend.companions():
             self.log_line.emit(f"$ {' '.join(cargv)}")
-            comp = ManagedProcess(cargv, on_line=lambda l: self._line_from_thread.emit(f"[viewer] {l}"),
-                                  on_exit=self._companion_exit.emit)
+            comp = ManagedProcess(cargv, on_line=lambda l: safe_emit(self._line_from_thread, f"[viewer] {l}"),
+                                  on_exit=lambda c: safe_emit(self._companion_exit, c))
             try:
                 comp.start()
                 self.companions.append(comp)
@@ -182,8 +191,8 @@ class CastController(QObject):
             return
         self.log_line.emit(f"$ {' '.join(argv)}")
         env = self.backend.engine_env() if self.backend else {}
-        self.proc = ManagedProcess(argv, on_line=self._line_from_thread.emit, on_exit=self._exit_from_thread.emit,
-                                   env=env or None)
+        self.proc = ManagedProcess(argv, on_line=lambda l: safe_emit(self._line_from_thread, l),
+                                   on_exit=lambda c: safe_emit(self._exit_from_thread, c), env=env or None)
         try:
             self.proc.start()
         except OSError as exc:
@@ -215,6 +224,8 @@ class CastController(QObject):
     def shutdown(self) -> None:
         """App is quitting: stop everything and hand the device back synchronously."""
         self._pending_argv = None
+        self._cancel.set()                                  # kill a running prepare step now
+        QThreadPool.globalInstance().waitForDone(3000)      # let workers finish before Qt objects go away
         if self.proc:
             self.proc.stop()
             self.proc.wait(5)
@@ -322,7 +333,7 @@ class _DeviceScan(QRunnable):
             phones = devices.discover()
         except Exception:  # never let a scan crash the app
             phones = []
-        self.sink.found.emit(phones)
+        safe_emit(self.sink.found, phones)
 
 
 class DeviceWatcher(QObject):

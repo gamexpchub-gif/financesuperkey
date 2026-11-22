@@ -19,7 +19,7 @@ from icast.backends.wireless import WirelessBackend
 from icast.core import deps, devices, history
 from icast.core.config import config_dir, AUDIO_SINKS, FLIPS, FRAME_RATES, RESOLUTIONS, ROTATIONS, VIDEO_SINKS, AppSettings
 from icast.gui import theme
-from icast.gui.controller import CastController, DeviceWatcher
+from icast.gui.controller import CastController, DeviceWatcher, safe_emit
 from icast.gui.icons import icon_pixmap
 from icast.gui.widgets import (
     AA, FeatureChip, GlassCard, GradientButton, GradientTitle, HeroArt, IconButton, LogoMark, ModeCard, NavButton,
@@ -255,7 +255,7 @@ class _Recover(QRunnable):
     def run(self) -> None:
         msg = recover_usb()
         if msg:
-            self.log.emit(msg)
+            safe_emit(self.log, msg)
 
 
 class MainWindow(QMainWindow):
@@ -1027,7 +1027,9 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:  # noqa: N802
         self._collect()
-        self.ctrl.shutdown()  # stops the cast and hands the iPhone back before quitting
+        self._clock.stop()
+        self._scan_timer.stop()
+        self.ctrl.shutdown()  # stops the cast, waits for workers, hands the iPhone back before quitting
         if self.tray:
             self.tray.hide()
         event.accept()
