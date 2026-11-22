@@ -1,0 +1,39 @@
+iCast 1.0.0 — iPhone Screen Cast for Linux
+==========================================
+
+Works on: Ubuntu 22.04+ / Debian 12+ / Linux Mint / Pop!_OS (64-bit), with an internet
+connection during installation.
+
+INSTALL (one time)
+------------------
+1. Unzip:              unzip iCast-1.0.0-linux.zip
+2. Open the folder:    cd i_cast
+3. Install:            ./scripts/install.sh
+   (asks for your password; takes a few minutes the first time)
+4. Unplug and re-plug the iPhone cable (if connected).
+5. Check:              icast doctor
+6. Start:              icast        (or open "iCast" from the application menu)
+
+USE
+---
+Wireless:  iPhone and computer on the same Wi-Fi → Start Wireless →
+           iPhone: Control Center → Screen Mirroring → iCast
+Wired:     iPhone: Settings → Personal Hotspot → "Allow Others to Join" ON, cable connected →
+           Start Wired → iPhone: Control Center → Screen Mirroring → iCast
+
+Viewer keys:  Esc = small window · F / double-click = fullscreen · Q = stop
+Landscape apps and games fill the screen automatically.
+
+বাংলায়
+-------
+১. zip খুলুন:        unzip iCast-1.0.0-linux.zip
+২. ফোল্ডারে যান:      cd i_cast
+৩. install করুন:     ./scripts/install.sh   (password চাইবে, প্রথমবার কয়েক মিনিট লাগে)
+৪. iPhone এর ক্যাবল খুলে আবার লাগান।
+৫. চালান:            icast
+
+Wireless: একই Wi‑Fi → Start Wireless → iPhone এ Screen Mirroring → iCast
+Wired:    iPhone এ Personal Hotspot চালু + ক্যাবল → Start Wired → Screen Mirroring → iCast
+Key: Esc = ছোট window · F = পুরো স্ক্রিন · Q = বন্ধ
+
+Problems? In iCast open Connection History → Copy log.
