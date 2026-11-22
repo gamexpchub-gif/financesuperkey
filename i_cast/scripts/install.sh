@@ -41,6 +41,18 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="05ac", MODE="0666"
 RULE
 sudo udevadm control --reload-rules && sudo udevadm trigger || true
 
+say "Installing the USB helper (lets iCast take exclusive control of the iPhone while casting)…"
+sudo install -o root -g root -m 0755 "$HERE/scripts/icast-usb" /usr/local/libexec/icast-usb
+RULE_USER="${SUDO_USER:-$USER}"
+TMP_SUDOERS="$(mktemp)"
+echo "$RULE_USER ALL=(root) NOPASSWD: /usr/local/libexec/icast-usb" > "$TMP_SUDOERS"
+if sudo visudo -cf "$TMP_SUDOERS" >/dev/null; then
+  sudo install -o root -g root -m 0440 "$TMP_SUDOERS" /etc/sudoers.d/icast-usb
+else
+  echo "warning: could not validate sudoers rule; wired casting will ask for your password" >&2
+fi
+rm -f "$TMP_SUDOERS"
+
 if command -v ufw >/dev/null && sudo ufw status | grep -q active; then
   say "Opening firewall for AirPlay (mDNS + ports 7100-7102)…"
   sudo ufw allow 5353/udp
@@ -57,5 +69,5 @@ mkdir -p "$HOME/.local/share/applications" "$HOME/.local/share/icons/hicolor/sca
 install -m 0644 "$HERE/packaging/icast.desktop" "$HOME/.local/share/applications/icast.desktop"
 install -m 0644 "$HERE/packaging/icast.svg" "$HOME/.local/share/icons/hicolor/scalable/apps/icast.svg"
 
-say "Done! Run:  icast doctor   then   icast"
+say "Done! Unplug and re-plug your iPhone, then run:  icast doctor   and   icast"
 echo "Tip: with 'Fixed ports' enabled in iCast, use base port 7100 to match the firewall rules."

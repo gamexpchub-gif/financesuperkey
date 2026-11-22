@@ -17,7 +17,7 @@ import sys
 import time
 
 from icast import __app_name__, __version__
-from icast.backends.base import CastState
+from icast.backends.base import CastState, run_steps
 from icast.backends.wired import WiredBackend
 from icast.backends.wireless import WirelessBackend
 from icast.core import deps, devices
@@ -75,23 +75,43 @@ def _run_backend(backend, label: str) -> int:
         return 127
     argv = backend.build_command()
     print(_c("b", f"▶ {label}"), _c("dim", " ".join(argv)))
+    err = run_steps(backend.prepare_steps(), backend, lambda l: print(_c("dim", f"  {l}")))
+    if err:
+        print(_c("bad", f"✘ {err}"))
+        run_steps(backend.cleanup_steps(), backend, lambda l: print(_c("dim", f"  {l}")))
+        return 1
+    try:
+        return _run_engine(backend, argv)
+    finally:
+        run_steps(backend.cleanup_steps(), backend, lambda l: print(_c("dim", f"  {l}")))
+
+
+def _run_engine(backend, argv: list[str]) -> int:
     state = {"v": CastState.STARTING}
 
     def on_line(line: str) -> None:
+        line = backend.humanize(line)
         new = backend.classify(line)
         if new and new != state["v"]:
             state["v"] = new
             print(_c("b", f"[{new.value.upper()}]"))
+            if new == CastState.ERROR:
+                print(_c("bad", "  → " + backend.explain(line)))
         print(_c("dim", f"  {line}"))
 
     companions = []
     for cargv in backend.companions():
         print(_c("dim", "  viewer: " + " ".join(cargv)))
-        comp = ManagedProcess(cargv, on_line=lambda l: print(_c("dim", f"  [viewer] {l}")))
+        comp = ManagedProcess(cargv, on_line=lambda l: on_line(f"[viewer] {l}"))
         comp.start()
         companions.append(comp)
     if companions:
-        time.sleep(backend.companion_delay_s)
+        deadline = time.monotonic() + backend.companion_timeout_s
+        while not backend.companions_ready() and time.monotonic() < deadline:
+            if any(not c.running for c in companions):
+                print("Viewer (ffplay) closed before the stream started.")
+                return 1
+            time.sleep(0.05)
 
     proc = ManagedProcess(argv, on_line=on_line)
     for comp in companions:  # closing the viewer ends the session
@@ -160,6 +180,13 @@ def cmd_wired(args) -> int:
     return code
 
 
+def cmd_reset_usb(args) -> int:
+    backend = WiredBackend(AppSettings.load().wired, udid=args.udid or "")
+    err = run_steps(backend.cleanup_steps() or [backend.reset_command()], backend, print)
+    print(f"Reset failed: {err}" if err else "Done. Unplug and re-plug the iPhone, unlock it, then run: icast wired")
+    return 1 if err else 0
+
+
 def cmd_gui(_args) -> int:
     try:
         from icast.gui.app import run
@@ -196,6 +223,10 @@ def build_parser() -> argparse.ArgumentParser:
     pu.add_argument("--smooth", action="store_true", help="steadier pacing for slower PCs (~0.1 s more delay)")
     pu.add_argument("--no-audio", action="store_true", help="picture only")
     pu.set_defaults(fn=cmd_wired)
+
+    pr = sub.add_parser("reset-usb", help="take the iPhone out of a stuck USB capture mode")
+    pr.add_argument("--udid")
+    pr.set_defaults(fn=cmd_reset_usb)
     return p
 
 

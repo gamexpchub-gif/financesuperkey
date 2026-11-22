@@ -133,3 +133,85 @@ def test_history_roundtrip(tmp_path):
     assert history.fmt_duration(75) == "1:15" and history.fmt_duration(3725) == "1:02:05"
     history.clear(p)
     assert history.load(p) == []
+
+
+# Real qvh output (logrus JSON + printErrJSON), copied from qvh's source strings.
+QVH_WAIT = '{"level":"info","msg":"Device \'00008120001A2B3C\' USB connection ready, waiting for ping..","time":"x"}'
+QVH_PING = '{"level":"info","msg":"PING received","time":"x"}'
+QVH_WARN = ('{"level":"warning","msg":"Failed sending control transfer for enabling hidden QT config. Seems like '
+            'this happens sometimes but it still works usually: x","time":"x"}')
+QVH_SOFT_ERR = '{"level":"error","msg":"Error parsing FEED packet: 00 x","time":"x"}'
+QVH_FATAL = '{"error_message":"Error enabling QT config","original_error":"libusb: bad access [code -3]"}'
+QVH_NODEV = '{"error_message":"no device found to use","original_error":"no iOS devices are connected to this host"}'
+
+
+def test_wired_understands_real_qvh_logs():
+    b = WiredBackend(WiredSettings(), udid="x")
+    h = b.humanize
+    assert h(QVH_WAIT).startswith("Device") and b.classify(h(QVH_WAIT)) == CastState.WAITING
+    assert b.classify(h(QVH_PING)) == CastState.STREAMING
+    assert b.classify(h("[viewer] Input #0, h264, from 'tcp://127.0.0.1:5000?listen=1':")) == CastState.STREAMING
+    # warnings and per-packet errors are not fatal
+    assert b.classify(h(QVH_WARN)) is None
+    assert b.classify(h(QVH_SOFT_ERR)) is None
+    # printErrJSON is fatal and gets a plain-language explanation
+    assert b.classify(h(QVH_FATAL)) == CastState.ERROR
+    assert "permission" in b.explain(h(QVH_FATAL)).lower()
+    assert b.classify(h(QVH_NODEV)) == CastState.ERROR and "not found" in b.explain(h(QVH_NODEV))
+    assert b.reset_command() == ["qvh", "deactivate", "--udid=x"]
+
+
+def test_port_listening_detects_listener():
+    import socket
+    from icast.backends.wired import free_port, port_listening
+    port = free_port()
+    assert not port_listening(port)
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", port))
+    srv.listen(1)
+    try:
+        assert port_listening(port)
+    finally:
+        srv.close()
+
+
+def test_wired_prepare_and_cleanup_steps(monkeypatch):
+    import icast.backends.wired as wired
+    b = WiredBackend(WiredSettings(), udid="00008120-001A2B3C")
+    monkeypatch.setattr(wired.os.path, "exists", lambda p: p == wired.USB_HELPER)
+    assert b.prepare_steps() == [["qvh", "activate", "--udid=00008120-001A2B3C"],
+                                 ["sudo", "-n", wired.USB_HELPER, "prepare", "00008120-001A2B3C"]]
+    assert b.cleanup_steps()[0][:2] == ["qvh", "deactivate"] and b.cleanup_steps()[1][3] == "restore"
+    # fatal output from qvh activate, crash of activate, and missing sudo permission are all reported
+    assert "permission" in b.step_failed(["qvh", "activate"], 0, QVH_FATAL).lower()
+    assert "capture mode" in b.step_failed(["qvh", "activate"], 2, "boom")
+    assert "install.sh" in b.step_failed(["sudo", "-n", wired.USB_HELPER, "prepare", "x"], 1,
+                                         "sudo: a password is required")
+    assert b.step_failed(["qvh", "activate"], 0, '{"level":"info","msg":"ok"}') is None
+    monkeypatch.setattr(wired.os.path, "exists", lambda p: False)
+    assert len(b.prepare_steps()) == 1  # helper not installed: activate only
+
+
+def test_usb_helper_releases_only_that_iphone(tmp_path):
+    import subprocess
+    from pathlib import Path
+    helper = Path(__file__).resolve().parents[1] / "scripts" / "icast-usb"
+    d = tmp_path / "bus/usb/devices"
+    for name in ("1-2", "1-2:1.1", "1-2:1.2", "3-1", "3-1:1.0"):
+        (d / name).mkdir(parents=True)
+    (d / "1-2/idVendor").write_text("05ac\n"); (d / "1-2/serial").write_text("00008120001A2B3C\n")
+    (d / "3-1/idVendor").write_text("046d\n"); (d / "3-1/serial").write_text("OTHER\n")
+    for drv in ("usbfs", "ipheth", "usbhid"):
+        (tmp_path / "drivers" / drv).mkdir(parents=True)
+        (tmp_path / "drivers" / drv / "unbind").write_text("")
+    (d / "1-2:1.1/driver").symlink_to(tmp_path / "drivers/usbfs")
+    (d / "1-2:1.2/driver").symlink_to(tmp_path / "drivers/ipheth")
+    (d / "3-1:1.0/driver").symlink_to(tmp_path / "drivers/usbhid")
+    env = {"ICAST_SYSFS": str(tmp_path), "PATH": "/usr/bin:/bin"}
+    r = subprocess.run(["bash", str(helper), "prepare", "00008120-001A2B3C"], env=env, capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert (tmp_path / "drivers/ipheth/unbind").read_text().strip() == "1-2:1.2"
+    assert (tmp_path / "drivers/usbfs/unbind").read_text().strip() == "1-2:1.1"
+    assert (tmp_path / "drivers/usbhid/unbind").read_text() == ""          # other devices untouched
+    bad = subprocess.run(["bash", str(helper), "prepare", "x; rm -rf /"], env=env, capture_output=True, text=True)
+    assert bad.returncode == 2

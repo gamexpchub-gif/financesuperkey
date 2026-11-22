@@ -13,11 +13,11 @@ from PySide6.QtWidgets import (
 )
 
 from icast import __app_name__, __version__
-from icast.backends.base import CastState
+from icast.backends.base import CastState, run_steps
 from icast.backends.wired import WiredBackend
 from icast.backends.wireless import WirelessBackend
 from icast.core import deps, devices, history
-from icast.core.config import AUDIO_SINKS, FLIPS, FRAME_RATES, RESOLUTIONS, ROTATIONS, VIDEO_SINKS, AppSettings
+from icast.core.config import config_dir, AUDIO_SINKS, FLIPS, FRAME_RATES, RESOLUTIONS, ROTATIONS, VIDEO_SINKS, AppSettings
 from icast.gui import theme
 from icast.gui.controller import CastController, DeviceWatcher
 from icast.gui.icons import icon_pixmap
@@ -232,7 +232,10 @@ class StatusStrip(GlassCard):
     def set_status(self, text: str, ok: bool, warn: bool = False) -> None:
         color = theme.GREEN if ok else (theme.AMBER if warn else theme.RED)
         self.s_icon.setPixmap(icon_pixmap("check" if ok else "alert", 32, color))
-        self.s_text.setText(text)
+        short = text if len(text) <= 58 else text[:56].rstrip() + "…"
+        self.s_text.setText(short)
+        self.s_text.setToolTip(text)
+        self.setToolTip(text if short != text else "")
 
     def set_resolution(self, text: str) -> None:
         self.r_text.setText(f"Resolution: {text}")
@@ -476,6 +479,10 @@ class MainWindow(QMainWindow):
         refresh.clicked.connect(self._manual_scan)
         br.addWidget(self.trust_btn)
         br.addWidget(refresh)
+        reset = OutlineButton("Reset USB", "refresh", height=48, font_px=15, colors=("#FF8A4C", "#FF4D6A"))
+        reset.setToolTip("Takes the iPhone out of a stuck screen-capture mode (qvh deactivate)")
+        reset.clicked.connect(self._reset_usb)
+        br.addWidget(reset)
         br.addStretch(1)
         dl.addLayout(br)
 
@@ -536,6 +543,10 @@ class MainWindow(QMainWindow):
         head.addLayout(page_header("Connection History", "Every casting session, newest first."), 1)
         clear = OutlineButton("Clear history", "trash", height=48, font_px=15)
         clear.clicked.connect(self._clear_history)
+        copy = OutlineButton("Copy log", "folder", height=48, font_px=15)
+        copy.clicked.connect(self._copy_log)
+        head.addWidget(copy, 0, Qt.AlignBottom)
+        head.addSpacing(10)
         head.addWidget(clear, 0, Qt.AlignBottom)
         lay.addLayout(head)
 
@@ -725,6 +736,9 @@ class MainWindow(QMainWindow):
             else:
                 QMessageBox.information(self, __app_name__, "Stop the current cast before switching mode.")
             return
+        if self.ctrl.cleaning_up:
+            QMessageBox.information(self, __app_name__, "Giving the iPhone back to the system — try again in a moment.")
+            return
         self._collect()
         self.settings.mode = mode
         if mode == "wireless":
@@ -837,6 +851,30 @@ class MainWindow(QMainWindow):
         self.strip.set_status("Scanning for iPhones…", True)
         self.watcher.scan()
 
+    def _reset_usb(self) -> None:
+        if self.ctrl.busy:
+            QMessageBox.information(self, __app_name__, "Stop casting first.")
+            return
+        item = self.dev_list.currentItem()
+        udid = item.data(Qt.UserRole) if item else ""
+        backend = WiredBackend(self.settings.wired, udid=udid)
+        err = run_steps(backend.cleanup_steps() or [backend.reset_command()], backend, self._log)
+        QMessageBox.information(self, __app_name__,
+                                ("USB reset done. Unplug the iPhone, plug it back in, unlock it, "
+                                 "then press Start Wired." if not err else f"Reset USB failed:\n{err}"))
+
+    def _copy_log(self) -> None:
+        text = self.log.toPlainText()
+        QApplication.clipboard().setText(text)
+        path = config_dir() / "last-log.txt"
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+            where = f"\n\nAlso saved to:\n{path}"
+        except OSError:
+            where = ""
+        QMessageBox.information(self, __app_name__, f"Log copied to the clipboard.{where}")
+
     def _pair_selected(self) -> None:
         item = self.dev_list.currentItem()
         if not item:
@@ -902,6 +940,8 @@ class MainWindow(QMainWindow):
         self.strip.set_resolution("Native" if wd_active else RES_LABEL.get(res, res))
 
     def _on_devices(self, phones: list) -> None:
+        if self.ctrl.busy:
+            return  # usbmuxd is paused while casting over USB; keep the last known list
         before = {p.udid for p in self.phones}
         self.phones = phones
         cur = self.dev_list.currentItem().data(Qt.UserRole) if self.dev_list.currentItem() else None
@@ -973,7 +1013,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:  # noqa: N802
         self._collect()
-        self.ctrl.stop()
+        self.ctrl.shutdown()  # stops the cast and hands the iPhone back before quitting
         if self.tray:
             self.tray.hide()
         event.accept()

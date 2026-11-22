@@ -75,6 +75,8 @@ the phone picture centered and its shape kept.
 | iPhone not listed under USB | Unlock the phone, tap *Trust*, run `sudo systemctl restart usbmuxd`, try another cable |
 | "Not trusted" | Click *Trust this computer* in iCast and accept on the iPhone |
 | No sound | Wireless: set *Audio output* to `pulsesink` or `pipewiresink`. Wired: check *Play iPhone sound* |
+| Wired: “No permission to use the iPhone over USB” | Run `scripts/install.sh` again, then unplug and re-plug the iPhone |
+| Wired: “didn't switch into capture mode” / “Could not retrieve config” | Press **Reset USB** (or `icast reset-usb`), re-plug, unlock, Start Wired. iCast pauses usbmuxd and the iPhone tethering driver while casting, because Linux won't switch the iPhone's USB mode while they hold it |
 | Wired picture stutters | Choose *Smooth* latency in Wired Cast, or close heavy apps |
 
 Settings are saved in `~/.config/icast/settings.json`.

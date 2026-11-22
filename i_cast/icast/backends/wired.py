@@ -22,6 +22,7 @@ record
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import socket
@@ -34,6 +35,7 @@ from icast.backends.base import Backend, CastState, split_extra
 from icast.core.config import WiredSettings
 
 VIEWER_TITLE = "iCast — iPhone"
+USB_HELPER = "/usr/local/libexec/icast-usb"  # installed by scripts/install.sh
 
 
 def free_port() -> int:
@@ -52,6 +54,25 @@ def gst_has(element: str) -> bool:
         return False
 
 
+def port_listening(port: int) -> bool:
+    """True when something on this machine is LISTENing on TCP ``port`` (reads /proc, no connect).
+
+    Connecting to probe would be accepted by ffplay as *the* stream and break it, so we look instead.
+    """
+    want = f":{port:04X}"
+    for table in ("/proc/net/tcp", "/proc/net/tcp6"):
+        try:
+            with open(table, encoding="ascii") as fh:
+                next(fh, None)
+                for row in fh:
+                    cols = row.split()
+                    if len(cols) > 3 and cols[1].endswith(want) and cols[3] == "0A":
+                        return True
+        except OSError:
+            continue
+    return False
+
+
 def pulse_server_running() -> bool:
     """True when a PulseAudio / PipeWire-Pulse server socket exists for this user."""
     if os.environ.get("PULSE_SERVER"):
@@ -63,15 +84,112 @@ def pulse_server_running() -> bool:
 class WiredBackend(Backend):
     name = "Wired (USB)"
     binary = "qvh"
-    companion_delay_s = 0.6  # give ffplay time to open its listening socket
+    companion_delay_s = 0.6      # fallback wait when /proc/net/tcp is unavailable
+    companion_timeout_s = 10.0   # max wait for the viewer to start listening
 
+    # Matched against humanize()d lines. qvh logs logrus JSON ({"level","msg"}) and prints fatal
+    # problems as {"error_message", "original_error"}; ffplay (viewer) announces the stream with "Input #0".
     STATE_PATTERNS = (
-        (CastState.ERROR, (r"no device", r"device not found", r"could not", r"permission denied",
-                           r"LIBUSB_ERROR", r"\bpanic\b", r"Invalid Pipeline", r"Connection refused")),
-        (CastState.STREAMING, (r"start streaming", r"receiving", r"Start Session", r"ASYN", r"FEED",
-                               r"stream started", r"Input #0", r"Stream #0:0")),
-        (CastState.WAITING, (r"activat", r"enabling", r"waiting for", r"Opening device")),
+        (CastState.ERROR, (r"^FATAL:", r"no iOS devices are connected", r"usbSerial:.*not found",
+                           r"Unable to find device", r"LIBUSB_ERROR", r"access denied", r"\bpanic\b",
+                           r"Invalid Pipeline", r"Failed creating custom pipeline", r"failed connecting to usb",
+                           r"Error enabling QT config")),
+        (CastState.STREAMING, (r"\[viewer\].*Input #0", r"\[viewer\].*Stream #0:0", r"PING received",
+                               r"Start Session")),
+        (CastState.WAITING, (r"Starting Gstreamer", r"Gstreamer is running", r"USB connection ready",
+                             r"waiting for ping", r"no usbSerial specified")),
     )
+
+    def humanize(self, line: str) -> str:
+        raw = line.removeprefix("[viewer] ")
+        if not raw.startswith("{"):
+            return line
+        try:
+            data = json.loads(raw)
+        except ValueError:
+            return line
+        if not isinstance(data, dict):
+            return line
+        if "error_message" in data:
+            # printErrJSON(): qvh gives up after this
+            return f"FATAL: {data['error_message']} — {data.get('original_error', '')}".rstrip(" —")
+        msg = data.get("msg")
+        if msg is None:
+            return line
+        level = str(data.get("level", "info")).lower()
+        return msg if level in ("info", "debug") else f"{level.upper()}: {msg}"
+
+    EXPLANATIONS = (
+        (r"LIBUSB_ERROR_ACCESS|bad access|code -3\]|access denied|permission denied|operation not permitted",
+         "No permission to use the iPhone over USB. Unplug the iPhone and plug it back in "
+         "(the USB rule from install.sh applies on re-plug). If it persists, run scripts/install.sh again."),
+        (r"LIBUSB_ERROR_BUSY|resource busy|code -6\]",
+         "The iPhone's USB connection is busy — another app is using it. Close other mirroring tools, "
+         "press Reset USB, re-plug the cable and try again."),
+        (r"no iOS devices are connected|Unable to find device|usbSerial:.*not found|LIBUSB_ERROR_NO_DEVICE|no device \[code -4\]",
+         "iPhone not found on USB. Unlock it, re-plug the cable (try another port) and press Start again."),
+        (r"Error enabling QT config|failed connecting to usb|LIBUSB_ERROR_(PIPE|IO|TIMEOUT)",
+         "The iPhone didn't switch into screen-capture mode. Unlock the iPhone, press Reset USB, "
+         "re-plug the cable and press Start Wired again."),
+        (r"Invalid Pipeline|no element|Failed creating custom pipeline",
+         "A GStreamer plugin is missing. Run scripts/install.sh again (needs gstreamer1.0-plugins-bad, -libav)."),
+    )
+
+    def explain(self, line: str) -> str:
+        import re
+        for pattern, text in self.EXPLANATIONS:
+            if re.search(pattern, line, re.IGNORECASE):
+                return text
+        return line.removeprefix("FATAL: ")
+
+    def companions_ready(self) -> bool:
+        if self.port is None:
+            return True
+        if not os.path.exists("/proc/net/tcp"):
+            return True  # can't check; caller falls back to the fixed delay
+        return port_listening(self.port)
+
+    # ------------------------------------------------- exclusive USB access
+    def prepare_steps(self) -> list[list[str]]:
+        if not self.udid:
+            return []
+        # 1) let the iPhone expose its screen-capture USB configuration (it re-connects once)
+        steps = [[self.binary, "activate", f"--udid={self.udid}"]]
+        # 2) Linux won't switch to that configuration while usbmuxd / ipheth hold the iPhone
+        #    ("Could not retrieve config"), so release it for the duration of the cast.
+        if os.path.exists(USB_HELPER):
+            steps.append(["sudo", "-n", USB_HELPER, "prepare", self.udid])
+        return steps
+
+    def cleanup_steps(self) -> list[list[str]]:
+        if not self.udid:
+            return []
+        steps = [[self.binary, "deactivate", f"--udid={self.udid}"]]
+        if os.path.exists(USB_HELPER):
+            steps.append(["sudo", "-n", USB_HELPER, "restore", self.udid])
+        return steps
+
+    def step_failed(self, argv: list[str], code: int, output: str) -> str | None:
+        if argv[:2] == ["sudo", "-n"] and code != 0:
+            if "password" in output.lower() or "not allowed" in output.lower():
+                return ("iCast needs its USB helper permission. Run scripts/install.sh once more, "
+                        "re-plug the iPhone, then press Start Wired.")
+            return self.explain(output.strip().splitlines()[-1] if output.strip() else "USB helper failed")
+        for line in output.splitlines():
+            human = self.humanize(line.strip())
+            if human.startswith("FATAL:"):
+                return self.explain(human)
+        if code != 0 and argv[1:2] == ["activate"]:
+            last = output.strip().splitlines()[-1] if output.strip() else f"exit code {code}"
+            return f"Could not switch the iPhone into capture mode: {self.explain(self.humanize(last))}"
+        return None
+
+    def reset_command(self) -> list[str]:
+        """Take the iPhone out of a stuck screen-capture USB mode."""
+        argv = [self.binary, "deactivate"]
+        if self.udid:
+            argv.append(f"--udid={self.udid}")
+        return argv
 
     def __init__(self, settings: WiredSettings, udid: str = "", binary: str = "qvh",
                  player: str = "ffplay", screen: tuple[int, int, int, int] | None = None) -> None:
@@ -110,7 +228,8 @@ class WiredBackend(Backend):
 
     def viewer_command(self, port: int) -> list[str]:
         return [
-            self.player, "-hide_banner", "-loglevel", "warning",
+            # info level so iCast sees "Input #0" the moment the picture arrives; no stats spam
+            self.player, "-hide_banner", "-nostats", "-loglevel", "info",
             # input: no buffering, no probing delay
             "-fflags", "nobuffer", "-flags", "low_delay", "-probesize", "32", "-analyzeduration", "0",
             # ultra: every frame is due "now" and stale ones are dropped -> newest frame on screen
