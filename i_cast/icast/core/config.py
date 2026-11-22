@@ -15,6 +15,7 @@ AUDIO_SINKS = ("auto", "pulsesink", "pipewiresink", "alsasink", "none")
 VIDEO_SINKS = ("auto", "autovideosink", "glimagesink", "xvimagesink", "waylandsink", "kmssink")
 WIRED_OUTPUTS = ("fullscreen", "window", "record")
 LATENCY_MODES = ("ultra", "smooth")
+WIRED_ENGINES = ("airplay", "qvh")
 SETTINGS_VERSION = 2
 
 
@@ -46,6 +47,7 @@ class WirelessSettings:
 
 @dataclass
 class WiredSettings:
+    engine: str = "airplay"  # airplay: AirPlay over the USB cable | qvh: QuickTime capture (experimental)
     preferred_udid: str = ""
     auto_start_on_connect: bool = False
     output: str = "fullscreen"  # fullscreen | window | record
@@ -135,6 +137,8 @@ class AppSettings:
             w.receiver_name = defaults.receiver_name
         if self.wired.output not in WIRED_OUTPUTS:
             self.wired.output = "fullscreen"
+        if self.wired.engine not in WIRED_ENGINES:
+            self.wired.engine = "airplay"
         if self.wired.latency_mode not in LATENCY_MODES:
             self.wired.latency_mode = "ultra"
         if not (10 <= int(self.wired.audio_buffer_ms) <= 500):

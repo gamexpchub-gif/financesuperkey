@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 
 from icast import __app_name__, __version__
 from icast.backends.base import CastState, run_steps
+from icast.backends.wired_airplay import WiredAirPlayBackend
 from icast.backends.wired import USB_HELPER, WiredBackend, apple_device_connected, recover_usb
 from icast.backends.wireless import WirelessBackend
 from icast.core import deps, devices, history
@@ -328,6 +329,7 @@ class MainWindow(QMainWindow):
         self._scan_timer.start()
         self.recovered.connect(self._after_recover)
         QThreadPool.globalInstance().start(_Recover(self.ctrl.log_line, self.recovered))
+        self._sync_engine_ui()
         self.go(0)
         self._on_state("idle", "")
 
@@ -509,9 +511,15 @@ class MainWindow(QMainWindow):
         opts = GlassCard()
         ol = card_layout(opts)
         ol.addWidget(text_label("USB mirroring", 21, QFont.Bold))
-        ol.addWidget(text_label("Your iPhone fills one big fullscreen window, showing the newest frame. "
-                                "Esc stops casting · F toggles fullscreen.", 15, QFont.Normal, theme.MUTED))
+        self.u_engine_hint = text_label("", 15, QFont.Normal, theme.MUTED)
+        ol.addWidget(self.u_engine_hint)
         g = form_grid()
+        self.u_engine = QComboBox()
+        self.u_engine.addItem("AirPlay over USB cable — works on every iOS (recommended)", "airplay")
+        self.u_engine.addItem("QuickTime capture (qvh) — experimental, older iOS", "qvh")
+        self.u_engine.setCurrentIndex(max(0, self.u_engine.findData(u.engine)))
+        self.u_engine.setCursor(Qt.PointingHandCursor)
+        self.u_engine.currentIndexChanged.connect(self._sync_engine_ui)
         self.u_output = QComboBox()
         for key, label in (("fullscreen", "Fullscreen — big single screen (recommended)"),
                            ("window", "Window — classic small window"),
@@ -535,14 +543,20 @@ class MainWindow(QMainWindow):
         dir_row.addWidget(browse)
         self.u_auto = QCheckBox("Start automatically when an iPhone is plugged in")
         self.u_auto.setChecked(u.auto_start_on_connect)
-        g.addWidget(field("Display"), 0, 0)
-        g.addWidget(self.u_output, 0, 1)
-        g.addWidget(field("Latency"), 1, 0)
-        g.addWidget(self.u_latency, 1, 1)
-        g.addWidget(self.u_audio, 2, 1)
-        g.addWidget(field("Recordings"), 3, 0)
-        g.addLayout(dir_row, 3, 1)
-        g.addWidget(self.u_auto, 4, 1)
+        self._qvh_only = []
+        g.addWidget(field("Engine"), 0, 0)
+        g.addWidget(self.u_engine, 0, 1)
+        for grid_row, (lbl, wdg) in enumerate((("Display", self.u_output), ("Latency", self.u_latency),
+                                               ("", self.u_audio), ("Recordings", dir_row)), start=1):
+            lab = field(lbl)
+            g.addWidget(lab, grid_row, 0)
+            if isinstance(wdg, QHBoxLayout):
+                holder = QWidget()
+                holder.setLayout(wdg)
+                wdg = holder
+            g.addWidget(wdg, grid_row, 1)
+            self._qvh_only += [lab, wdg]
+        g.addWidget(self.u_auto, 5, 1)
         ol.addLayout(g)
         ol.addStretch(1)
         self.btn_wired = GradientButton("Start Wired", theme.GRAD_WIRED, height=60, font_px=20)
@@ -766,6 +780,11 @@ class MainWindow(QMainWindow):
             self.ctrl.start(WirelessBackend(self.settings.wireless), "Wireless", "AirPlay client")
             return
         self.go(2)
+        if self.settings.wired.engine == "airplay":
+            # AirPlay over the USB cable (Personal Hotspot link): Apple's own protocol, any iOS version
+            backend = WiredAirPlayBackend(self.settings.wireless)
+            self.ctrl.start(backend, "Wired", self.phones[0].name if self.phones else "iPhone (USB)")
+            return
         if not self.phones:
             if os.path.exists(USB_HELPER) and apple_device_connected():
                 # Linux sees an iPhone that usbmuxd doesn't: reset it, then start automatically
@@ -803,6 +822,7 @@ class MainWindow(QMainWindow):
         w.base_port = self.w_port.value()
         w.append_hostname = self.w_host.isChecked()
         w.extra_args = self.w_extra.text()
+        u.engine = self.u_engine.currentData()
         u.output = self.u_output.currentData()
         u.latency_mode = self.u_latency.currentData()
         u.audio = self.u_audio.isChecked()
@@ -893,6 +913,17 @@ class MainWindow(QMainWindow):
                                 ("USB reset done. Unplug the iPhone, plug it back in, unlock it, "
                                  "then press Start Wired." if not err else f"Reset USB failed:\n{err}"))
 
+    def _sync_engine_ui(self, *_args) -> None:
+        airplay = self.u_engine.currentData() == "airplay"
+        for w in self._qvh_only:
+            w.setVisible(not airplay)
+        self.u_engine_hint.setText(
+            "Cable + Personal Hotspot: on the iPhone turn on Settings → Personal Hotspot → “Allow Others to "
+            "Join”, press Start Wired, then Control Center → Screen Mirroring → iCast. Opens fullscreen."
+            if airplay else
+            "QuickTime screen capture over USB (qvh). May not work on the newest iOS versions. "
+            "Esc stops casting · F toggles fullscreen.")
+
     def _after_recover(self) -> None:
         self.watcher.scan()
         if self._auto_start_wired:
@@ -965,7 +996,9 @@ class MainWindow(QMainWindow):
             self.strip.set_status("Starting casting engine…", True, warn=True)
             self.strip.set_connection("Starting", theme.AMBER)
         elif state == "waiting":
-            msg = (f"Open Screen Mirroring on iPhone → “{name}”" if wl_active else "Waiting for iPhone screen…")
+            usb_airplay = wd_active and self.settings.wired.engine == "airplay"
+            msg = (f"Open Screen Mirroring on iPhone → “{name}”" if (wl_active or usb_airplay)
+                   else "Waiting for iPhone screen…")
             self.strip.set_status(msg, True, warn=True)
             self.strip.set_connection("Waiting", theme.CYAN)
             self._event("Receiver ready — waiting for iPhone")

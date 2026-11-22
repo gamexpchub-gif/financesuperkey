@@ -52,7 +52,19 @@ icast pair <udid>           # show the "Trust This Computer" prompt
 - **Wireless:** iPhone আর কম্পিউটার একই Wi‑Fi তে রাখুন → iCast এ *Start casting* চাপুন → iPhone এ Control Center → Screen Mirroring → **iCast** সিলেক্ট করুন।
 - **Wired:** ক্যাবল দিয়ে iPhone লাগান → ফোন unlock করে **Trust** চাপুন → *Wired · USB* ট্যাবে ফোন দেখাবে → *Start casting*।
 
-## Wired fullscreen: how it stays fast
+## Wired engines
+
+| Engine | How | Notes |
+|---|---|---|
+| **AirPlay over USB cable** (default) | iPhone *Personal Hotspot → Allow Others to Join*, cable connected → the iPhone creates a USB network link (ipheth, 172.20.10.x) and Screen Mirroring runs over the cable | Apple's own protocol: works on every iOS version, no Wi‑Fi needed, opens fullscreen |
+| QuickTime capture (qvh) — experimental | Reverse-engineered USB screen-capture protocol | qvh is unmaintained since 2023; on very new iOS versions the iPhone may never start the stream (“waiting for ping”) |
+
+```bash
+icast wired                  # uses the engine chosen in the app (default: AirPlay over USB)
+icast wired --engine qvh     # QuickTime capture
+```
+
+## Wired fullscreen (qvh engine): how it stays fast
 
 `Start Wired` opens **one borderless fullscreen window** that fills the monitor iCast is on, with
 the phone picture centered and its shape kept.

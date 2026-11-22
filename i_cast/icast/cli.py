@@ -164,6 +164,14 @@ def cmd_wireless(args) -> int:
 
 def cmd_wired(args) -> int:
     settings = AppSettings.load()
+    engine = args.engine or settings.wired.engine
+    if engine == "airplay":
+        from icast.backends.wired_airplay import WiredAirPlayBackend
+
+        backend = WiredAirPlayBackend(settings.wireless)
+        print(f"On your iPhone: Personal Hotspot on, cable connected → Control Center → Screen Mirroring → "
+              f"“{settings.wireless.receiver_name}”")
+        return _run_backend(backend, "Wired AirPlay over USB")
     if args.record:
         settings.wired.output = "record"
     elif args.window:
@@ -230,6 +238,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     pu = sub.add_parser("wired", help="USB mirroring")
     pu.add_argument("--udid")
+    pu.add_argument("--engine", choices=("airplay", "qvh"),
+                    help="airplay: AirPlay over the USB cable (default) | qvh: QuickTime capture (experimental)")
     mode = pu.add_mutually_exclusive_group()
     mode.add_argument("--record", action="store_true", help="record to file instead of showing the screen")
     mode.add_argument("--window", action="store_true", help="classic small window instead of fullscreen")

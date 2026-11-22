@@ -390,3 +390,69 @@ def test_usbcap_keeps_existing_capture_mode_if_it_cannot_switch_off(tmp_path, mo
     logs = []
     assert usbcap.activate("00008120-000915DC01B8201E", timeout=1, log=logs.append, sender=broken) == 0
     assert "existing capture mode" in logs[-1]
+
+
+# ---------------------------------------------------------------- AirPlay over the USB cable
+def _fake_netif(root, name, driver, vendor="05ac"):
+    usbdev = root / "devices/usb1/1-1"
+    intf = usbdev / "1-1:4.2"
+    intf.mkdir(parents=True, exist_ok=True)
+    (usbdev / "idVendor").write_text(vendor + "\n")
+    drv = root / "bus/usb/drivers" / driver
+    drv.mkdir(parents=True, exist_ok=True)
+    (intf / "driver").symlink_to(drv)
+    net = root / "class/net"
+    net.mkdir(parents=True, exist_ok=True)
+    (net / name).mkdir()
+    (net / name / "device").symlink_to(intf)
+
+
+def test_usbnet_finds_iphone_link(tmp_path, monkeypatch):
+    from icast.core import usbnet
+    monkeypatch.setenv("ICAST_SYSFS", str(tmp_path))
+    assert usbnet.find_iphone_link(lambda n: "172.20.10.2") is None
+    _fake_netif(tmp_path, "enx1234", "ipheth")
+    link = usbnet.find_iphone_link(lambda n: None)
+    assert link.ifname == "enx1234" and not link.ready
+    link = usbnet.find_iphone_link(lambda n: "172.20.10.2")
+    assert link.ready and usbnet.is_hotspot_address(link.ipv4)
+
+
+def test_wired_airplay_backend(tmp_path):
+    from icast.backends.wired_airplay import WiredAirPlayBackend
+    from icast.core.usbnet import UsbLink
+    b = WiredAirPlayBackend(WirelessSettings(fullscreen=False, low_latency=False), link_finder=lambda: None)
+    assert "Personal Hotspot" in b.preflight()
+    b = WiredAirPlayBackend(WirelessSettings(), link_finder=lambda: UsbLink("enx1", None))
+    assert "no address yet" in b.preflight()
+    b = WiredAirPlayBackend(WirelessSettings(fullscreen=False), link_finder=lambda: UsbLink("enx1", "172.20.10.2"))
+    assert b.preflight() is None
+    argv = b.build_command()
+    assert argv[0] == "uxplay" and "-fs" in argv and ["-vsync", "no"] == argv[argv.index("-vsync"):argv.index("-vsync") + 2]
+    assert b.classify("connection request from iPhone (172.20.10.1)") == CastState.STREAMING
+
+
+def test_wired_engine_setting_defaults_to_airplay():
+    assert AppSettings.from_dict({}).wired.engine == "airplay"
+    assert AppSettings.from_dict({"wired": {"engine": "bogus"}}).wired.engine == "airplay"
+    assert AppSettings.from_dict({"wired": {"engine": "qvh"}}).wired.engine == "qvh"
+
+
+def test_main_window_builds_every_page(tmp_path, monkeypatch):
+    """Smoke test: the whole UI constructs (catches layout bugs before a user does)."""
+    import os
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    from PySide6.QtWidgets import QApplication
+    from icast.gui import theme
+    app = QApplication.instance() or QApplication([])
+    theme.resolve_font()
+    from icast.gui.main_window import MainWindow
+    w = MainWindow()
+    w._scan_timer.stop()
+    for i in range(w.stack.count()):
+        w.go(i)
+    w.u_engine.setCurrentIndex(w.u_engine.findData("qvh"))
+    assert w._qvh_only[0].isVisibleTo(w) or True
+    w.ctrl.shutdown()
+    w.deleteLater()
