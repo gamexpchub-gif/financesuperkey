@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "icast"
-version = "1.0.0"
+version = "1.1.0"
 description = "iCast — professional iPhone screen casting for Linux (wired USB + wireless AirPlay)"
 readme = "README.md"
 requires-python = ">=3.9"

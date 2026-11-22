@@ -10,6 +10,7 @@ import time
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Signal
 
+from icast import __version__
 from icast.backends.base import Backend, CastState, run_steps
 from icast.core import devices, history, viewer
 from icast.core.process import ManagedProcess
@@ -103,6 +104,7 @@ class CastController(QObject):
         if self.busy:
             return
         self.mode, self.device = mode or backend.name, device
+        self.log_line.emit(f"── iCast {__version__} · {backend.name} ──")
         self._last_error = ""
         self._session_start = time.strftime("%Y-%m-%d %H:%M")
         self._streamed_s = 0.0
