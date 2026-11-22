@@ -41,6 +41,10 @@ class Backend(ABC):
         """True once the companions can accept the engine (e.g. the viewer is listening)."""
         return True
 
+    def engine_env(self) -> dict[str, str]:
+        """Extra environment variables for the engine process."""
+        return {}
+
     def preflight(self) -> str | None:
         """Plain-language blocker found before starting anything, else None."""
         return None
@@ -91,20 +95,29 @@ def split_extra(extra: str) -> list[str]:
         return []
 
 
-def run_steps(steps: list[list[str]], backend: Backend, log) -> str:
-    """Run steps in order; return "" on success or a plain-language error."""
+def run_steps(steps: list[list[str]], backend: Backend, log, best_effort: bool = False) -> str:
+    """Run steps in order; return "" on success or a plain-language error.
+
+    best_effort=True (cleanup) runs every step even if an earlier one failed.
+    """
+    first_error = ""
     for argv in steps:
         log(f"$ {' '.join(argv)}")
         if not shutil.which(argv[0]):
-            return f"'{argv[0]}' is not installed. Run scripts/install.sh."
-        try:
-            res = subprocess.run(argv, capture_output=True, text=True, timeout=45, stdin=subprocess.DEVNULL)
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            return f"{argv[0]} did not finish: {exc}"
-        out = (res.stdout or "") + (res.stderr or "")
-        for line in out.strip().splitlines()[-12:]:
-            log(backend.humanize(line.strip()))
-        err = backend.step_failed(argv, res.returncode, out)
+            err = f"'{argv[0]}' is not installed. Run scripts/install.sh."
+        else:
+            try:
+                res = subprocess.run(argv, capture_output=True, text=True, timeout=45, stdin=subprocess.DEVNULL)
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                err = f"{argv[0]} did not finish: {exc}"
+            else:
+                out = (res.stdout or "") + (res.stderr or "")
+                for line in out.strip().splitlines()[-12:]:
+                    log(backend.humanize(line.strip()))
+                err = backend.step_failed(argv, res.returncode, out) or ""
         if err:
-            return err
-    return ""
+            if not best_effort:
+                return err
+            log(f"⚠ {err}")
+            first_error = first_error or err
+    return first_error

@@ -16,12 +16,13 @@ from icast.core.process import ManagedProcess
 class _StepRunner(QRunnable):
     """Runs short prepare/cleanup commands off the UI thread."""
 
-    def __init__(self, steps: list[list[str]], backend: Backend, log, done) -> None:
+    def __init__(self, steps: list[list[str]], backend: Backend, log, done, best_effort: bool = False) -> None:
         super().__init__()
         self.steps, self.backend, self.log, self.done = steps, backend, log, done
+        self.best_effort = best_effort
 
     def run(self) -> None:
-        self.done.emit(run_steps(self.steps, self.backend, self.log.emit))
+        self.done.emit(run_steps(self.steps, self.backend, self.log.emit, best_effort=self.best_effort))
 
 
 class CastController(QObject):
@@ -173,7 +174,9 @@ class CastController(QObject):
         if argv is None:
             return
         self.log_line.emit(f"$ {' '.join(argv)}")
-        self.proc = ManagedProcess(argv, on_line=self._line_from_thread.emit, on_exit=self._exit_from_thread.emit)
+        env = self.backend.engine_env() if self.backend else {}
+        self.proc = ManagedProcess(argv, on_line=self._line_from_thread.emit, on_exit=self._exit_from_thread.emit,
+                                   env=env or None)
         try:
             self.proc.start()
         except OSError as exc:
@@ -210,7 +213,7 @@ class CastController(QObject):
         self._stop_companions()
         backend, self._needs_cleanup = self._needs_cleanup, None
         if backend:
-            run_steps(backend.cleanup_steps(), backend, lambda _l: None)
+            run_steps(backend.cleanup_steps(), backend, lambda _l: None, best_effort=True)
 
     def reset_usb(self, argv: list[str]) -> tuple[bool, str]:
         """Run a short one-off engine command (e.g. ``qvh deactivate``) and report its output."""
@@ -293,7 +296,7 @@ class CastController(QObject):
         if backend and backend.cleanup_steps():
             self.cleaning_up = True
             QThreadPool.globalInstance().start(
-                _StepRunner(backend.cleanup_steps(), backend, self.log_line, self._cleanup_done))
+                _StepRunner(backend.cleanup_steps(), backend, self.log_line, self._cleanup_done, best_effort=True))
 
     def _after_cleanup(self, error: str) -> None:
         self.cleaning_up = False

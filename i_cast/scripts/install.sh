@@ -26,13 +26,14 @@ say "Enabling Avahi (AirPlay discovery) and usbmuxd…"
 sudo systemctl enable --now avahi-daemon || true
 sudo systemctl restart usbmuxd 2>/dev/null || true
 
-if ! command -v qvh >/dev/null; then
-  say "Building qvh (USB screen capture engine)…"
-  TMP="$(mktemp -d)"
-  git clone --depth 1 https://github.com/danielpaulus/quicktime_video_hack "$TMP/qvh"
-  (cd "$TMP/qvh" && go build -o qvh .)
-  sudo install -m 0755 "$TMP/qvh/qvh" /usr/local/bin/qvh
-  rm -rf "$TMP"
+QVH_MARKER=/usr/local/share/icast/qvh-patched-d81396e
+if [ ! -f "$QVH_MARKER" ] || ! command -v qvh >/dev/null; then
+  say "Building qvh (USB screen-capture engine, patched for iCast)…"
+  TMP_QVH="$(mktemp)"
+  bash "$HERE/scripts/build-qvh.sh" "$TMP_QVH"
+  sudo install -m 0755 "$TMP_QVH" /usr/local/bin/qvh
+  rm -f "$TMP_QVH"
+  sudo mkdir -p /usr/local/share/icast && sudo touch "$QVH_MARKER"
 fi
 
 say "Allowing USB access to iPhones without root…"

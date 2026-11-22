@@ -66,6 +66,13 @@ the phone picture centered and its shape kept.
 - Measured with a 60 fps test stream: the newest frame stayed on screen with no growing delay. Pick
   *Smooth* latency in Wired Cast (or `--smooth`) on slower PCs.
 
+### Why wired needs the patched qvh + USB helper
+Linux only lets qvh switch the iPhone into its screen-capture USB configuration while nothing else
+holds the iPhone, but stock qvh refuses to run unless usbmuxd (which *does* hold it) is reachable.
+iCast resolves this per session: `qvh activate` (pairing checked, usbmuxd up) → `icast-usb prepare`
+(pause usbmuxd, release the iPhone) → `qvh gstreamer` with `QVH_SKIP_PAIR_CHECK=1` → `icast-usb
+restore` → `qvh deactivate`. Cleanup always runs every step, also when iCast quits.
+
 ## Troubleshooting
 
 | Problem | Fix |
@@ -76,6 +83,7 @@ the phone picture centered and its shape kept.
 | iPhone not listed under USB | Unlock the phone, tap *Trust*, run `sudo systemctl restart usbmuxd`, try another cable |
 | "Not trusted" | Click *Trust this computer* in iCast and accept on the iPhone |
 | No sound | Wireless: set *Audio output* to `pulsesink` or `pipewiresink`. Wired: check *Play iPhone sound* |
+| Wired: “device not found, is it still connected? … /var/run/usbmuxd” | Old qvh. Run `scripts/install.sh` — it builds the pinned, patched qvh (`scripts/build-qvh.sh`) |
 | Wired: “interface claimed by usbfs while 'qvh' sets config” (dmesg) | usbmuxd is holding the iPhone. Run `scripts/install.sh` (installs the USB helper), re-plug, Start Wired |
 | Wired: no iPhone listed after a crash | iCast restores usbmuxd at startup; or run `sudo systemctl unmask --runtime usbmuxd && sudo systemctl start usbmuxd` |
 | Wired: “No permission to use the iPhone over USB” | Run `scripts/install.sh` again, then unplug and re-plug the iPhone |

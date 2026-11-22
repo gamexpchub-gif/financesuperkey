@@ -36,6 +36,7 @@ from icast.core.config import WiredSettings
 
 VIEWER_TITLE = "iCast — iPhone"
 USB_HELPER = "/usr/local/libexec/icast-usb"  # installed by scripts/install.sh
+QVH_PATCH_MARKER = "/usr/local/share/icast/qvh-patched-d81396e"  # qvh built by scripts/build-qvh.sh
 
 
 def free_port() -> int:
@@ -91,9 +92,20 @@ def usbmuxd_masked() -> bool:
     return out.stdout.strip().startswith("masked")
 
 
+def apple_device_connected() -> bool:
+    try:
+        for dev in Path("/sys/bus/usb/devices").iterdir():
+            vid = dev / "idVendor"
+            if vid.exists() and vid.read_text().strip() == "05ac":
+                return True
+    except OSError:
+        pass
+    return False
+
+
 def recover_usb() -> str:
-    """Self-heal at startup: restart usbmuxd if iCast left it paused. Returns a log line or ''."""
-    if os.path.exists(USB_HELPER) and usbmuxd_masked():
+    """Self-heal at startup: restart usbmuxd if iCast left it paused or stopped. Returns a log line or ''."""
+    if os.path.exists(USB_HELPER) and (usbmuxd_masked() or (apple_device_connected() and not usbmuxd_running())):
         try:
             subprocess.run(["sudo", "-n", USB_HELPER, "recover"], capture_output=True, timeout=20)
         except (OSError, subprocess.TimeoutExpired):
@@ -195,17 +207,24 @@ class WiredBackend(Backend):
         """Problems that make a wired cast impossible, found before touching the iPhone."""
         if self.s.output != "record" and not shutil.which(self.player) and self.s.output == "fullscreen":
             return "ffplay (from ffmpeg) is missing — run scripts/install.sh."
-        if not os.path.exists(USB_HELPER) and usbmuxd_running():
-            return ("iCast's USB helper is not installed, so Linux will not let iCast take the iPhone "
-                    "(“interface claimed by usbfs”). Run scripts/install.sh once, re-plug the iPhone, try again.")
+        if not os.path.exists(USB_HELPER) or not os.path.exists(QVH_PATCH_MARKER):
+            return ("iCast's USB components are out of date (USB helper / patched qvh). "
+                    "Run scripts/install.sh once, re-plug the iPhone, then press Start Wired.")
         return None
+
+    def engine_env(self) -> dict[str, str]:
+        # usbmuxd is paused during the cast; pairing was already verified by `qvh activate`.
+        return {"QVH_SKIP_PAIR_CHECK": "1"} if self.udid and os.path.exists(USB_HELPER) else {}
 
     def cleanup_steps(self) -> list[list[str]]:
         if not self.udid:
             return []
-        steps = [[self.binary, "deactivate", f"--udid={self.udid}"]]
+        steps = []
         if os.path.exists(USB_HELPER):
+            # usbmuxd first: every unpatched qvh command (deactivate included) needs it
             steps.append(["sudo", "-n", USB_HELPER, "restore", self.udid])
+            steps.append(["sleep", "1"])
+        steps.append([self.binary, "deactivate", f"--udid={self.udid}"])
         return steps
 
     def step_failed(self, argv: list[str], code: int, output: str) -> str | None:

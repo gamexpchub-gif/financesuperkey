@@ -82,7 +82,7 @@ def _run_backend(backend, label: str) -> int:
     err = run_steps(backend.prepare_steps(), backend, lambda l: print(_c("dim", f"  {l}")))
     if err:
         print(_c("bad", f"✘ {err}"))
-        run_steps(backend.cleanup_steps(), backend, lambda l: print(_c("dim", f"  {l}")))
+        run_steps(backend.cleanup_steps(), backend, lambda l: print(_c("dim", f"  {l}")), best_effort=True)
         return 1
     try:
         code = _run_engine(backend, argv)
@@ -91,7 +91,7 @@ def _run_backend(backend, label: str) -> int:
             code = _run_engine(backend, backend.build_command())
         return code
     finally:
-        run_steps(backend.cleanup_steps(), backend, lambda l: print(_c("dim", f"  {l}")))
+        run_steps(backend.cleanup_steps(), backend, lambda l: print(_c("dim", f"  {l}")), best_effort=True)
 
 
 def _run_engine(backend, argv: list[str]) -> int:
@@ -121,7 +121,7 @@ def _run_engine(backend, argv: list[str]) -> int:
                 return 1
             time.sleep(0.05)
 
-    proc = ManagedProcess(argv, on_line=on_line)
+    proc = ManagedProcess(argv, on_line=on_line, env=backend.engine_env() or None)
     for comp in companions:  # closing the viewer ends the session
         comp.on_exit = lambda _c: proc.stop()
     proc.start()
@@ -190,7 +190,7 @@ def cmd_wired(args) -> int:
 
 def cmd_reset_usb(args) -> int:
     backend = WiredBackend(AppSettings.load().wired, udid=args.udid or "")
-    err = run_steps(backend.cleanup_steps() or [backend.reset_command()], backend, print)
+    err = run_steps(backend.cleanup_steps() or [backend.reset_command()], backend, print, best_effort=True)
     print(f"Reset failed: {err}" if err else "Done. Unplug and re-plug the iPhone, unlock it, then run: icast wired")
     return 1 if err else 0
 

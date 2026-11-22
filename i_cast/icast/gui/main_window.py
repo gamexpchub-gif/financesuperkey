@@ -872,7 +872,7 @@ class MainWindow(QMainWindow):
         item = self.dev_list.currentItem()
         udid = item.data(Qt.UserRole) if item else ""
         backend = WiredBackend(self.settings.wired, udid=udid)
-        err = run_steps(backend.cleanup_steps() or [backend.reset_command()], backend, self._log)
+        err = run_steps(backend.cleanup_steps() or [backend.reset_command()], backend, self._log, best_effort=True)
         QMessageBox.information(self, __app_name__,
                                 ("USB reset done. Unplug the iPhone, plug it back in, unlock it, "
                                  "then press Start Wired." if not err else f"Reset USB failed:\n{err}"))

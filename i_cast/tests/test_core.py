@@ -181,7 +181,9 @@ def test_wired_prepare_and_cleanup_steps(monkeypatch):
     monkeypatch.setattr(wired.os.path, "exists", lambda p: p == wired.USB_HELPER)
     assert b.prepare_steps() == [["qvh", "activate", "--udid=00008120-001A2B3C"],
                                  ["sudo", "-n", wired.USB_HELPER, "prepare", "00008120-001A2B3C"]]
-    assert b.cleanup_steps()[0][:2] == ["qvh", "deactivate"] and b.cleanup_steps()[1][3] == "restore"
+    # usbmuxd comes back first; qvh deactivate (which needs usbmuxd) runs last
+    assert b.cleanup_steps()[0][3] == "restore" and b.cleanup_steps()[-1][:2] == ["qvh", "deactivate"]
+    assert b.engine_env() == {"QVH_SKIP_PAIR_CHECK": "1"}
     # fatal output from qvh activate, crash of activate, and missing sudo permission are all reported
     assert "permission" in b.step_failed(["qvh", "activate"], 0, QVH_FATAL).lower()
     assert "capture mode" in b.step_failed(["qvh", "activate"], 2, "boom")
@@ -234,11 +236,26 @@ def test_wireless_cleans_stale_receiver_and_retries_on_name_conflict():
     assert "avahi" in b.explain("*** ERROR: DNSServiceRegister call returned kDNSServiceErr_Unknown").lower()
 
 
-def test_wired_preflight_requires_helper_when_usbmuxd_holds_phone(monkeypatch):
+def test_wired_preflight_requires_helper_and_patched_qvh(monkeypatch):
     import icast.backends.wired as wired
     monkeypatch.setattr(wired.shutil, "which", lambda n: f"/usr/bin/{n}")
     monkeypatch.setattr(wired, "usbmuxd_running", lambda: True)
     monkeypatch.setattr(wired.os.path, "exists", lambda p: False)
     assert "install.sh" in WiredBackend(WiredSettings(), udid="x").preflight()
-    monkeypatch.setattr(wired.os.path, "exists", lambda p: p == wired.USB_HELPER)
+    monkeypatch.setattr(wired.os.path, "exists", lambda p: p == wired.USB_HELPER)      # helper but old qvh
+    assert "install.sh" in WiredBackend(WiredSettings(), udid="x").preflight()
+    monkeypatch.setattr(wired.os.path, "exists", lambda p: p in (wired.USB_HELPER, wired.QVH_PATCH_MARKER))
     assert WiredBackend(WiredSettings(), udid="x").preflight() is None
+
+
+def test_cleanup_runs_every_step_even_after_a_failure():
+    # Regression: a failing `qvh deactivate` used to skip the usbmuxd restore -> no iPhones listed.
+    from icast.backends.base import run_steps
+    b = WiredBackend(WiredSettings(), udid="x")
+    fatal = 'echo \'{"error_message":"device not found, is it still connected?","original_error":"usbmuxd"}\''
+    ran, logs = [], []
+    steps = [["sh", "-c", fatal], ["sh", "-c", "echo second"]]
+    err = run_steps(steps, b, logs.append, best_effort=True)
+    assert "second" in logs and err                       # kept going, still reports the problem
+    logs.clear()
+    assert run_steps(steps, b, logs.append) and "second" not in logs   # prepare stops at the first error
