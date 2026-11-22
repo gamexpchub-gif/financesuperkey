@@ -7,6 +7,8 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
+ME="${USER:-$(id -un)}"          # USER is not set in every terminal/session
+HOME="${HOME:-$(getent passwd "$ME" | cut -d: -f6)}"
 VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' "$HERE/pyproject.toml" | head -1)"
 say()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 ok()   { printf '\033[1;32m ✔\033[0m %s\n' "$*"; }
@@ -91,7 +93,7 @@ say "Installing the USB helper…"
 sudo install -d /usr/local/libexec
 sudo install -o root -g root -m 0755 "$HERE/scripts/icast-usb" /usr/local/libexec/icast-usb
 TMP_SUDOERS="$(mktemp)"
-echo "$USER ALL=(root) NOPASSWD: /usr/local/libexec/icast-usb" > "$TMP_SUDOERS"
+echo "$ME ALL=(root) NOPASSWD: /usr/local/libexec/icast-usb" > "$TMP_SUDOERS"
 if sudo visudo -cf "$TMP_SUDOERS" >/dev/null 2>&1; then
   sudo install -o root -g root -m 0440 "$TMP_SUDOERS" /etc/sudoers.d/icast-usb
 else
