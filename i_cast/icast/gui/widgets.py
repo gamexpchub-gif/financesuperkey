@@ -123,10 +123,10 @@ def logo_icon() -> QIcon:
 
 
 class LogoMark(QWidget):
-    def __init__(self, size: int, glow: bool = True) -> None:
+    def __init__(self, size: int, glow: bool = True, glow_pad: float = 0.35) -> None:
         super().__init__()
         self._glow = glow
-        pad = int(size * 0.35) if glow else 0
+        pad = int(size * glow_pad) if glow else 0
         self._pad = pad
         self.setFixedSize(size + 2 * pad, size + 2 * pad)
 

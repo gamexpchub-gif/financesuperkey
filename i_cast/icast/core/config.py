@@ -13,6 +13,9 @@ ROTATIONS = ("none", "L", "R")  # UxPlay -r values
 FLIPS = ("none", "H", "V", "I")  # UxPlay -f values
 AUDIO_SINKS = ("auto", "pulsesink", "pipewiresink", "alsasink", "none")
 VIDEO_SINKS = ("auto", "autovideosink", "glimagesink", "xvimagesink", "waylandsink", "kmssink")
+WIRED_OUTPUTS = ("fullscreen", "window", "record")
+LATENCY_MODES = ("ultra", "smooth")
+SETTINGS_VERSION = 2
 
 
 def config_dir() -> Path:
@@ -45,7 +48,10 @@ class WirelessSettings:
 class WiredSettings:
     preferred_udid: str = ""
     auto_start_on_connect: bool = False
-    output: str = "window"  # window | record
+    output: str = "fullscreen"  # fullscreen | window | record
+    latency_mode: str = "ultra"  # ultra: always newest frame | smooth: steadier on slow PCs
+    audio: bool = True
+    audio_buffer_ms: int = 40
     record_dir: str = str(Path.home() / "Videos" / "iCast")
     extra_args: str = ""
 
@@ -56,6 +62,7 @@ class AppSettings:
     wireless: WirelessSettings = field(default_factory=WirelessSettings)
     wired: WiredSettings = field(default_factory=WiredSettings)
     log_level: str = "info"
+    settings_version: int = SETTINGS_VERSION
 
     # ---------- persistence ----------
     @classmethod
@@ -81,11 +88,16 @@ class AppSettings:
         if isinstance(raw, dict):
             settings.mode = raw.get("mode", settings.mode)
             settings.log_level = raw.get("log_level", settings.log_level)
+            old_version = raw.get("settings_version", 1)
             try:
                 settings.wireless = pick(WirelessSettings, raw.get("wireless"))
                 settings.wired = pick(WiredSettings, raw.get("wired"))
             except TypeError:
                 pass
+            # v1 defaulted wired output to a small window; v2 casts fullscreen by default.
+            if old_version < 2 and settings.wired.output == "window":
+                settings.wired.output = "fullscreen"
+        settings.settings_version = SETTINGS_VERSION
         settings.validate()
         return settings
 
@@ -121,5 +133,9 @@ class AppSettings:
             w.pin = ""
         if not w.receiver_name.strip():
             w.receiver_name = defaults.receiver_name
-        if self.wired.output not in ("window", "record"):
-            self.wired.output = "window"
+        if self.wired.output not in WIRED_OUTPUTS:
+            self.wired.output = "fullscreen"
+        if self.wired.latency_mode not in LATENCY_MODES:
+            self.wired.latency_mode = "ultra"
+        if not (10 <= int(self.wired.audio_buffer_ms) <= 500):
+            self.wired.audio_buffer_ms = 40

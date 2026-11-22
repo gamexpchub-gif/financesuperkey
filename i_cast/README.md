@@ -40,7 +40,9 @@ icast doctor
 
 ```bash
 icast wireless --name "Living Room" --resolution 1920x1080 --fps 60 --pin 1234
-icast wired                 # live window over USB
+icast wired                 # fullscreen, ultra-low-latency USB mirroring (Esc to stop)
+icast wired --smooth        # steadier pacing for slower PCs
+icast wired --window        # classic small window
 icast wired --record        # record to ~/Videos/iCast/*.mp4
 icast devices               # list USB iPhones
 icast pair <udid>           # show the "Trust This Computer" prompt
@@ -50,6 +52,20 @@ icast pair <udid>           # show the "Trust This Computer" prompt
 - **Wireless:** iPhone আর কম্পিউটার একই Wi‑Fi তে রাখুন → iCast এ *Start casting* চাপুন → iPhone এ Control Center → Screen Mirroring → **iCast** সিলেক্ট করুন।
 - **Wired:** ক্যাবল দিয়ে iPhone লাগান → ফোন unlock করে **Trust** চাপুন → *Wired · USB* ট্যাবে ফোন দেখাবে → *Start casting*।
 
+## Wired fullscreen: how it stays fast
+
+`Start Wired` opens **one borderless fullscreen window** that fills the monitor iCast is on, with
+the phone picture centered and its shape kept.
+
+- qvh receives Apple's screen stream over USB and hands the phone's **H.264 untouched** (no
+  re-encode) to a local socket.
+- `ffplay` decodes it with no input buffer (`nobuffer`, `low_delay`), shows the newest frame
+  (`setpts=0`) and drops any frame that is already stale, so the delay never builds up.
+- Sound plays through GStreamer with a 40 ms buffer, so it stays in sync with the picture.
+- Keys: **Esc / q** stop · **F** or double-click toggles fullscreen.
+- Measured with a 60 fps test stream: the newest frame stayed on screen with no growing delay. Pick
+  *Smooth* latency in Wired Cast (or `--smooth`) on slower PCs.
+
 ## Troubleshooting
 
 | Problem | Fix |
@@ -58,7 +74,8 @@ icast pair <udid>           # show the "Trust This Computer" prompt
 | Choppy wireless video | Use 5 GHz Wi‑Fi, try 1280×720 or 30 fps, keep *Low‑latency mode* on |
 | iPhone not listed under USB | Unlock the phone, tap *Trust*, run `sudo systemctl restart usbmuxd`, try another cable |
 | "Not trusted" | Click *Trust this computer* in iCast and accept on the iPhone |
-| No sound | Set *Audio output* to `pulsesink` or `pipewiresink` |
+| No sound | Wireless: set *Audio output* to `pulsesink` or `pipewiresink`. Wired: check *Play iPhone sound* |
+| Wired picture stutters | Choose *Smooth* latency in Wired Cast, or close heavy apps |
 
 Settings are saved in `~/.config/icast/settings.json`.
 

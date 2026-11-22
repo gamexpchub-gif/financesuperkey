@@ -34,13 +34,54 @@ def test_wireless_full_options():
     assert "7100/tcp" in b.firewall_ports()
 
 
-def test_wired_commands(tmp_path):
-    b = WiredBackend(WiredSettings(), udid="abc123")
+def test_wired_window_and_record(tmp_path):
+    b = WiredBackend(WiredSettings(output="window"), udid="abc123")
     assert b.build_command() == ["qvh", "gstreamer", "--udid=abc123"]
+    assert b.companions() == []
     rec = WiredBackend(WiredSettings(output="record", record_dir=str(tmp_path)), udid="abc123")
     argv = rec.build_command()
     assert argv[:2] == ["qvh", "record"] and argv[2].endswith(".h264") and argv[3].endswith(".wav")
     assert rec.mux_command()[-1].endswith(".mp4")
+
+
+def test_wired_fullscreen_low_latency(monkeypatch):
+    import icast.backends.wired as wired
+    monkeypatch.setattr(wired.shutil, "which", lambda name: f"/usr/bin/{name}")
+    b = WiredBackend(WiredSettings(), udid="abc123", screen=(0, 0, 2560, 1440))
+    argv = b.build_command()
+    assert argv[:2] == ["qvh", "gstreamer"] and argv[-1] == "--udid=abc123"
+    pipeline = argv[2].split("=", 1)[1]
+    # phone H.264 goes untouched to the viewer: no decode / re-encode inside qvh
+    assert "name=video_target" in pipeline and "name=audio_target" in pipeline
+    assert f"tcpclientsink host=127.0.0.1 port={b.port} sync=false" in pipeline
+    assert "avdec_h264" not in pipeline and "x264enc" not in pipeline
+    assert "sync=false" in pipeline.split("audio_target", 1)[1]
+    (viewer,) = b.companions()
+    assert viewer[0] == "ffplay" and viewer[-1] == f"tcp://127.0.0.1:{b.port}?listen=1"
+    for flag in (["-fflags", "nobuffer"], ["-flags", "low_delay"], ["-vf", "setpts=0"], ["-fs"], ["-an"],
+                 ["-x", "2560"], ["-y", "1440"], ["-framedrop"]):
+        i = viewer.index(flag[0])
+        assert viewer[i:i + len(flag)] == flag
+    smooth = WiredBackend(WiredSettings(latency_mode="smooth"), udid="x")
+    smooth.build_command()
+    assert "setpts=0" not in smooth.companions()[0]
+
+
+def test_wired_audio_fallback(monkeypatch):
+    import icast.backends.wired as wired
+    monkeypatch.setattr(wired, "gst_has", lambda e: True)
+    monkeypatch.setattr(wired, "pulse_server_running", lambda: True)
+    assert "pulsesink sync=false buffer-time=40000" in WiredBackend(WiredSettings()).audio_pipeline()
+    monkeypatch.setattr(wired, "pulse_server_running", lambda: False)
+    assert "autoaudiosink sync=false" in WiredBackend(WiredSettings()).audio_pipeline()
+    assert "fakesink" in WiredBackend(WiredSettings(audio=False)).audio_pipeline()
+
+
+def test_settings_migrate_wired_to_fullscreen():
+    old = AppSettings.from_dict({"wired": {"output": "window"}})  # v1 file
+    assert old.wired.output == "fullscreen" and old.settings_version == 2
+    kept = AppSettings.from_dict({"settings_version": 2, "wired": {"output": "window"}})
+    assert kept.wired.output == "window"
 
 
 def test_state_classification():

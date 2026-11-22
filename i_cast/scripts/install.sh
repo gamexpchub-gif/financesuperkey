@@ -15,6 +15,7 @@ say "Installing system packages (sudo)…"
 sudo apt-get update
 sudo apt-get install -y \
   python3 python3-venv python3-pip pipx fonts-inter \
+  libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-image0 libxcb-render-util0 libxkbcommon-x11-0 \
   uxplay avahi-daemon libavahi-compat-libdnssd1 \
   usbmuxd libimobiledevice-utils libusb-1.0-0 \
   gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good \

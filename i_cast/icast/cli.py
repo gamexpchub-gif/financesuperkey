@@ -14,6 +14,7 @@ import argparse
 import shutil
 import signal
 import sys
+import time
 
 from icast import __app_name__, __version__
 from icast.backends.base import CastState
@@ -83,7 +84,18 @@ def _run_backend(backend, label: str) -> int:
             print(_c("b", f"[{new.value.upper()}]"))
         print(_c("dim", f"  {line}"))
 
+    companions = []
+    for cargv in backend.companions():
+        print(_c("dim", "  viewer: " + " ".join(cargv)))
+        comp = ManagedProcess(cargv, on_line=lambda l: print(_c("dim", f"  [viewer] {l}")))
+        comp.start()
+        companions.append(comp)
+    if companions:
+        time.sleep(backend.companion_delay_s)
+
     proc = ManagedProcess(argv, on_line=on_line)
+    for comp in companions:  # closing the viewer ends the session
+        comp.on_exit = lambda _c: proc.stop()
     proc.start()
     signal.signal(signal.SIGTERM, lambda *_: proc.stop())
     try:
@@ -92,6 +104,10 @@ def _run_backend(backend, label: str) -> int:
         print("\nStopping…")
         proc.stop()
         code = proc.wait(timeout=5) or 0
+    finally:
+        for comp in companions:
+            comp.on_exit = lambda _c: None
+            comp.stop(timeout=2)
     return code or 0
 
 
@@ -117,6 +133,14 @@ def cmd_wired(args) -> int:
     settings = AppSettings.load()
     if args.record:
         settings.wired.output = "record"
+    elif args.window:
+        settings.wired.output = "window"
+    else:
+        settings.wired.output = "fullscreen"
+    if args.smooth:
+        settings.wired.latency_mode = "smooth"
+    if args.no_audio:
+        settings.wired.audio = False
     udid = args.udid
     if not udid:
         found = devices.list_udids()
@@ -166,7 +190,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     pu = sub.add_parser("wired", help="USB mirroring")
     pu.add_argument("--udid")
-    pu.add_argument("--record", action="store_true", help="record to file instead of showing a window")
+    mode = pu.add_mutually_exclusive_group()
+    mode.add_argument("--record", action="store_true", help="record to file instead of showing the screen")
+    mode.add_argument("--window", action="store_true", help="classic small window instead of fullscreen")
+    pu.add_argument("--smooth", action="store_true", help="steadier pacing for slower PCs (~0.1 s more delay)")
+    pu.add_argument("--no-audio", action="store_true", help="picture only")
     pu.set_defaults(fn=cmd_wired)
     return p
 

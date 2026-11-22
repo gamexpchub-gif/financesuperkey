@@ -24,6 +24,16 @@ class Backend(ABC):
     def build_command(self) -> list[str]:
         """Return argv to launch the engine."""
 
+    def companions(self) -> list[list[str]]:
+        """Helper processes (e.g. the fullscreen viewer) started *before* the engine.
+
+        If a companion exits, the whole session ends; when the engine exits, companions are stopped.
+        Must be called after build_command().
+        """
+        return []
+
+    companion_delay_s: float = 0.0
+
     def classify(self, line: str) -> CastState | None:
         """Map an engine log line to a state transition (None = no change)."""
         for state, patterns in self.STATE_PATTERNS:

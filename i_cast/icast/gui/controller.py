@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import time
 
-from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
+from PySide6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Signal
 
 from icast.backends.base import Backend, CastState
 from icast.core import devices, history
@@ -19,6 +19,7 @@ class CastController(QObject):
     history_changed = Signal()
     _line_from_thread = Signal(str)
     _exit_from_thread = Signal(int)
+    _companion_exit = Signal(int)
 
     def __init__(self) -> None:
         super().__init__()
@@ -30,12 +31,15 @@ class CastController(QObject):
         self.device = ""
         self._session_start = ""
         self._streamed_s = 0.0
+        self.companions: list[ManagedProcess] = []
+        self._pending_argv: list[str] | None = None
         self._line_from_thread.connect(self._on_line)
         self._exit_from_thread.connect(self._on_exit)
+        self._companion_exit.connect(self._on_companion_exit)
 
     @property
     def active(self) -> bool:
-        return self.proc is not None and self.proc.running
+        return self._pending_argv is not None or (self.proc is not None and self.proc.running)
 
     def _set(self, state: CastState, detail: str = "") -> None:
         if state == CastState.STREAMING and self.state != CastState.STREAMING:
@@ -62,18 +66,58 @@ class CastController(QObject):
         except OSError as exc:
             self._set(CastState.ERROR, str(exc))
             return
+        self.companions = []
+        for cargv in backend.companions():
+            if not shutil.which(cargv[0]):
+                self.log_line.emit(f"'{cargv[0]}' not found — falling back to the standard window")
+                continue
+            self.log_line.emit(f"$ {' '.join(cargv)}")
+            comp = ManagedProcess(cargv, on_line=lambda l: self._line_from_thread.emit(f"[viewer] {l}"),
+                                  on_exit=self._companion_exit.emit)
+            try:
+                comp.start()
+                self.companions.append(comp)
+            except OSError as exc:
+                self.log_line.emit(f"Viewer failed to start: {exc}")
+        self._set(CastState.STARTING, backend.name)
+        self._pending_argv = argv
+        delay = int(backend.companion_delay_s * 1000) if self.companions else 0
+        QTimer.singleShot(delay, self._launch_engine)
+
+    def _launch_engine(self) -> None:
+        argv, self._pending_argv = self._pending_argv, None
+        if argv is None:  # stopped while the viewer was opening
+            self._stop_companions()
+            self._set(CastState.IDLE, "")
+            return
         self.log_line.emit(f"$ {' '.join(argv)}")
         self.proc = ManagedProcess(argv, on_line=self._line_from_thread.emit, on_exit=self._exit_from_thread.emit)
         try:
             self.proc.start()
         except OSError as exc:
+            self.proc = None
+            self._stop_companions()
             self._set(CastState.ERROR, str(exc))
-            return
-        self._set(CastState.STARTING, backend.name)
 
     def stop(self) -> None:
+        if self._pending_argv is not None:
+            self._pending_argv = None
+            self.log_line.emit("Stopping…")
+            return
         if self.proc:
             self.log_line.emit("Stopping…")
+            self.proc.stop()
+        self._stop_companions()
+
+    def _stop_companions(self) -> None:
+        comps, self.companions = self.companions, []
+        for c in comps:
+            c.stop(timeout=2)
+
+    def _on_companion_exit(self, code: int) -> None:
+        # The viewer window was closed (Esc / q / window close) -> end the whole session.
+        if self.proc and self.proc.running:
+            self.log_line.emit("Viewer closed — ending session")
             self.proc.stop()
 
     def _on_line(self, line: str) -> None:
@@ -86,6 +130,7 @@ class CastController(QObject):
     def _on_exit(self, code: int) -> None:
         self.log_line.emit(f"Engine exited (code {code})")
         backend, self.proc = self.backend, None
+        self._stop_companions()
         mux = getattr(backend, "mux_command", lambda: None)()
         if mux and shutil.which("ffmpeg"):
             subprocess.run(mux, capture_output=True)

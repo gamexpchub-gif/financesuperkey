@@ -7,7 +7,7 @@ import time
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer
 from PySide6.QtGui import QAction, QColor, QFont, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
-    QAbstractItemView, QButtonGroup, QCheckBox, QComboBox, QFileDialog, QGridLayout, QHBoxLayout, QHeaderView,
+    QAbstractItemView, QApplication, QButtonGroup, QCheckBox, QComboBox, QFileDialog, QGridLayout, QHBoxLayout, QHeaderView,
     QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QScrollArea,
     QSizeGrip, QSpinBox, QStackedWidget, QSystemTrayIcon, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
@@ -150,9 +150,8 @@ class Sidebar(GlassCard):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(16, 4, 16, 18)
         lay.setSpacing(6)
-        logo = LogoMark(104)
+        logo = LogoMark(104, glow_pad=0.16)
         lay.addWidget(logo, 0, Qt.AlignHCenter)
-        lay.addSpacing(-30)
         name = text_label(__app_name__, 44, QFont.Bold, wrap=False)
         name.setAlignment(Qt.AlignHCenter)
         tag = text_label("Cast. Connect. Share.", 17, QFont.Normal, theme.TEXT_2, wrap=False)
@@ -483,10 +482,23 @@ class MainWindow(QMainWindow):
         opts = GlassCard()
         ol = card_layout(opts)
         ol.addWidget(text_label("USB mirroring", 21, QFont.Bold))
-        ol.addWidget(text_label("Uses Apple's screen-capture protocol over the cable — the same one QuickTime uses.",
-                                15, QFont.Normal, theme.MUTED))
+        ol.addWidget(text_label("Your iPhone fills one big fullscreen window, showing the newest frame. "
+                                "Esc stops casting · F toggles fullscreen.", 15, QFont.Normal, theme.MUTED))
         g = form_grid()
-        self.u_output = combo(("window", "record"), u.output)
+        self.u_output = QComboBox()
+        for key, label in (("fullscreen", "Fullscreen — big single screen (recommended)"),
+                           ("window", "Window — classic small window"),
+                           ("record", "Record to MP4 file")):
+            self.u_output.addItem(label, key)
+        self.u_output.setCurrentIndex(max(0, self.u_output.findData(u.output)))
+        self.u_output.setCursor(Qt.PointingHandCursor)
+        self.u_latency = QComboBox()
+        self.u_latency.addItem("Ultra — newest frame, zero lag", "ultra")
+        self.u_latency.addItem("Smooth — steadier on slower PCs", "smooth")
+        self.u_latency.setCurrentIndex(max(0, self.u_latency.findData(u.latency_mode)))
+        self.u_latency.setCursor(Qt.PointingHandCursor)
+        self.u_audio = QCheckBox("Play iPhone sound (low-latency, in sync)")
+        self.u_audio.setChecked(u.audio)
         dir_row = QHBoxLayout()
         dir_row.setSpacing(8)
         self.u_dir = QLineEdit(u.record_dir)
@@ -496,11 +508,14 @@ class MainWindow(QMainWindow):
         dir_row.addWidget(browse)
         self.u_auto = QCheckBox("Start automatically when an iPhone is plugged in")
         self.u_auto.setChecked(u.auto_start_on_connect)
-        g.addWidget(field("Output"), 0, 0)
+        g.addWidget(field("Display"), 0, 0)
         g.addWidget(self.u_output, 0, 1)
-        g.addWidget(field("Recordings"), 1, 0)
-        g.addLayout(dir_row, 1, 1)
-        g.addWidget(self.u_auto, 2, 1)
+        g.addWidget(field("Latency"), 1, 0)
+        g.addWidget(self.u_latency, 1, 1)
+        g.addWidget(self.u_audio, 2, 1)
+        g.addWidget(field("Recordings"), 3, 0)
+        g.addLayout(dir_row, 3, 1)
+        g.addWidget(self.u_auto, 4, 1)
         ol.addLayout(g)
         ol.addStretch(1)
         self.btn_wired = GradientButton("Start Wired", theme.GRAD_WIRED, height=60, font_px=20)
@@ -722,7 +737,14 @@ class MainWindow(QMainWindow):
             return
         udid = self.settings.wired.preferred_udid
         phone = next((p for p in self.phones if p.udid == udid), self.phones[0])
-        self.ctrl.start(WiredBackend(self.settings.wired, udid=phone.udid), "Wired", phone.name)
+        self.ctrl.start(WiredBackend(self.settings.wired, udid=phone.udid, screen=self._screen_rect()),
+                        "Wired", phone.name)
+
+    def _screen_rect(self) -> tuple[int, int, int, int]:
+        """Physical-pixel geometry of the monitor iCast is on — the viewer fills exactly this screen."""
+        scr = self.screen() or QApplication.primaryScreen()
+        g, dpr = scr.geometry(), scr.devicePixelRatio()
+        return (round(g.x() * dpr), round(g.y() * dpr), round(g.width() * dpr), round(g.height() * dpr))
 
     def _collect(self) -> None:
         w, u = self.settings.wireless, self.settings.wired
@@ -741,7 +763,9 @@ class MainWindow(QMainWindow):
         w.base_port = self.w_port.value()
         w.append_hostname = self.w_host.isChecked()
         w.extra_args = self.w_extra.text()
-        u.output = self.u_output.currentText()
+        u.output = self.u_output.currentData()
+        u.latency_mode = self.u_latency.currentData()
+        u.audio = self.u_audio.isChecked()
         u.record_dir = self.u_dir.text().strip() or u.record_dir
         u.auto_start_on_connect = self.u_auto.isChecked()
         u.extra_args = self.u_extra.text()
