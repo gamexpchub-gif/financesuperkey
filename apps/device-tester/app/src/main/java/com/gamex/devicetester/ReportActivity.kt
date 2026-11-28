@@ -12,7 +12,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
+import com.gamex.devicetester.ui.ThemedActivity
 import androidx.core.content.FileProvider
 import com.gamex.devicetester.core.DeviceInfo
 import com.gamex.devicetester.core.ResultStore
@@ -34,7 +34,7 @@ import java.util.Date
 import java.util.Locale
 
 /** Final diagnostic report with score/grade, per-test notes, and text / PDF export. */
-class ReportActivity : AppCompatActivity() {
+class ReportActivity : ThemedActivity() {
 
     private data class Row(val category: String, val title: String, val status: TestStatus, val note: String?)
 

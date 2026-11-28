@@ -8,7 +8,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
+import com.gamex.devicetester.ui.ThemedActivity
 import com.gamex.devicetester.core.DeviceInfo
 import com.gamex.devicetester.ui.KeyValueList
 import com.gamex.devicetester.ui.MATCH
@@ -21,7 +21,7 @@ import com.gamex.devicetester.ui.label
 import com.gamex.devicetester.ui.lpMatchWrap
 
 /** Full hardware / software specification of the phone. */
-class DeviceInfoActivity : AppCompatActivity() {
+class DeviceInfoActivity : ThemedActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val col = LinearLayout(this).apply {

@@ -46,6 +46,7 @@
     </queries>
 
     <application
+        android:name=".App"
         android:allowBackup="false"
         android:icon="@drawable/ic_launcher"
         android:roundIcon="@drawable/ic_launcher"
@@ -63,6 +64,7 @@
             </intent-filter>
         </activity>
 
+        <activity android:name=".FullTestActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".ReportActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".DeviceInfoActivity" android:exported="false" android:screenOrientation="portrait" />
 

@@ -14,17 +14,28 @@ import com.gamex.devicetester.core.TestStatus
 import com.google.android.material.button.MaterialButton
 import kotlin.math.roundToInt
 
+/** Theme-aware colours. [dark] is set by ThemedActivity before any view is built. */
 object Palette {
-    val BG = Color.parseColor("#0B1220")
-    val CARD = Color.parseColor("#121C30")
-    val CARD_ALT = Color.parseColor("#22314F")
-    val STROKE = Color.parseColor("#24334F")
-    val ACCENT = Color.parseColor("#3B82F6")
-    val PASS = Color.parseColor("#22C55E")
-    val FAIL = Color.parseColor("#EF4444")
-    val SKIP = Color.parseColor("#F59E0B")
-    val TEXT = Color.parseColor("#E5E7EB")
-    val MUTED = Color.parseColor("#94A3B8")
+    @JvmStatic
+    var dark = true
+
+    private fun pick(d: Long, l: Long): Int = (if (dark) d else l).toInt()
+
+    val BG get() = pick(0xFF070B1A, 0xFFF3F5FB)
+    val CARD get() = pick(0xFF10172F, 0xFFFFFFFF)
+    val CARD_ALT get() = pick(0xFF1B2446, 0xFFEEF1F8)
+    val STROKE get() = pick(0xFF232E57, 0xFFE3E8F2)
+    val TEXT get() = pick(0xFFF1F5F9, 0xFF0F172A)
+    val MUTED get() = pick(0xFF94A3B8, 0xFF64748B)
+    val ACCENT get() = pick(0xFF3B82F6, 0xFF2563EB)
+    val PURPLE get() = pick(0xFF8B5CF6, 0xFF7C3AED)
+    val CYAN get() = pick(0xFF22D3EE, 0xFF0891B2)
+    val PASS get() = pick(0xFF22C55E, 0xFF16A34A)
+    val FAIL get() = pick(0xFFEF4444, 0xFFDC2626)
+    val SKIP get() = pick(0xFFF59E0B, 0xFFD97706)
+
+    /** [color] with the given alpha (0–255). */
+    fun alpha(color: Int, a: Int): Int = Color.argb(a, Color.red(color), Color.green(color), Color.blue(color))
 }
 
 const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
@@ -67,8 +78,8 @@ fun Context.actionButton(
     this.text = text
     isAllCaps = false
     backgroundTintList = ColorStateList.valueOf(color)
-    setTextColor(Color.WHITE)
-    cornerRadius = dp(12)
+    setTextColor(if (color == Palette.CARD_ALT || color == Palette.CARD) Palette.TEXT else Color.WHITE)
+    cornerRadius = dp(16)
     textSize = 15f
     insetTop = 0
     insetBottom = 0

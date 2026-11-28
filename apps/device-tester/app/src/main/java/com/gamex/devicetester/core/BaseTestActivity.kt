@@ -16,7 +16,10 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
+import com.gamex.devicetester.ui.ThemedActivity
+import com.gamex.devicetester.ui.circleButton
+import com.gamex.devicetester.ui.dpf
+import com.gamex.devicetester.ui.roundedBg
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -36,7 +39,7 @@ import kotlin.random.Random
  * Common frame for every hardware test: title, step counter, instructions, a content
  * area, a live status line and Fail / Skip / Pass buttons. Tests can also auto-pass.
  */
-abstract class BaseTestActivity : AppCompatActivity() {
+abstract class BaseTestActivity : ThemedActivity() {
 
     companion object {
         const val EXTRA_TEST_ID = "extra_test_id"
@@ -93,9 +96,24 @@ abstract class BaseTestActivity : AppCompatActivity() {
             setBackgroundColor(Palette.BG)
             setPadding(dp(16), dp(14), dp(16), dp(12))
         }
-        intent.getStringExtra(EXTRA_STEP)?.let { root.addView(label(it, 12f, Palette.ACCENT, true)) }
-        root.addView(label(testTitle, 22f, Palette.TEXT, true))
-        instructionView = label("", 14f, Palette.MUTED).also { root.addView(it, lpMatchWrap(top = dp(4))) }
+        val top = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        top.addView(circleButton("‹", 40) { showExitDialog() }.apply { textSize = 24f })
+        val step = intent.getStringExtra(EXTRA_STEP)
+        if (step != null) {
+            top.addView(label(step, 11f, Palette.ACCENT, true).apply {
+                setPadding(dp(12), dp(6), dp(12), dp(6))
+                background = roundedBg(Palette.alpha(Palette.ACCENT, if (Palette.dark) 45 else 28), dpf(14f))
+            }, LinearLayout.LayoutParams(WRAP, WRAP).apply { marginStart = dp(12) })
+        }
+        root.addView(top, lpMatchWrap(bottom = dp(10)))
+        root.addView(label(testTitle, 24f, Palette.TEXT, true))
+        instructionView = label("", 14f, Palette.MUTED).apply {
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = roundedBg(Palette.alpha(Palette.ACCENT, if (Palette.dark) 26 else 16), dpf(14f))
+        }.also { root.addView(it, lpMatchWrap(top = dp(8))) }
 
         content = FrameLayout(this)
         root.addView(content, LinearLayout.LayoutParams(MATCH, 0, 1f).apply {
@@ -103,13 +121,20 @@ abstract class BaseTestActivity : AppCompatActivity() {
             bottomMargin = dp(8)
         })
 
-        statusView = label("", 15f, Palette.TEXT, true).apply { gravity = Gravity.CENTER }
+        statusView = label("", 15f, Palette.TEXT, true).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+        }
         root.addView(statusView, lpMatchWrap(bottom = dp(8)))
 
         val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val f = actionButton("✕ Fail", Palette.FAIL) { finishWith(TestStatus.FAIL) }
         val s = actionButton("Skip", Palette.CARD_ALT) { finishWith(TestStatus.SKIP) }
         val p = actionButton("✓ Pass", Palette.PASS) { finishWith(TestStatus.PASS) }
+        for (b in listOf(f, s, p)) {
+            b.cornerRadius = dp(26)
+            b.minHeight = dp(54)
+        }
         bar.addView(f, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginEnd = dp(6) })
         bar.addView(s, LinearLayout.LayoutParams(0, WRAP, 0.8f).apply { marginEnd = dp(6) })
         bar.addView(p, LinearLayout.LayoutParams(0, WRAP, 1f))
