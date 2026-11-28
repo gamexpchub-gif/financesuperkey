@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Hardware is optional: the app installs everywhere and reports what is missing. -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.front" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.flash" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <uses-feature android:name="android.hardware.fingerprint" android:required="false" />
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+    <uses-feature android:name="android.hardware.nfc" android:required="false" />
+    <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <uses-feature android:name="android.hardware.wifi" android:required="false" />
+    <uses-feature android:name="android.hardware.sensor.proximity" android:required="false" />
+    <uses-feature android:name="android.hardware.sensor.light" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <uses-permission android:name="android.permission.USE_FINGERPRINT" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.NFC" />
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation"
+        tools:targetApi="s" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <queries>
+        <package android:name="com.google.android.gms" />
+        <package android:name="com.android.vending" />
+    </queries>
+
+    <application
+        android:allowBackup="false"
+        android:icon="@drawable/ic_launcher"
+        android:roundIcon="@drawable/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.DeviceTester">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity android:name=".ReportActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".DeviceInfoActivity" android:exported="false" android:screenOrientation="portrait" />
+
+        <activity android:name=".tests.DisplayTestActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".tests.TouchTestActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".tests.MultiTouchTestActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".tests.SpeakerTestActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".tests.MicTestActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".tests.HeadsetTestActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".tests.VibrationTestActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".tests.ButtonsTestActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".tests.ProximityTestActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".tests.SensorTestActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".tests.AllSensorsActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".tests.CameraTestActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".tests.FlashTestActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".tests.BiometricTestActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".tests.WifiTestActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".tests.BluetoothTestActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".tests.GpsTestActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".tests.NfcTestActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".tests.SimNetworkActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".tests.ImeiCheckActivity" android:exported="false" android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".tests.BatteryTestActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".tests.StorageTestActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".tests.SecurityCheckActivity" android:exported="false" android:screenOrientation="portrait" />
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+    </application>
+</manifest>
