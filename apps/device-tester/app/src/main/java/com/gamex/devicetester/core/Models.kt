@@ -17,7 +17,7 @@ data class TestItem(
 ) {
     fun intent(context: Context, step: String? = null): Intent =
         Intent(context, activity).apply {
-            putExtras(extras)
+            putExtras(this@TestItem.extras)
             putExtra(BaseTestActivity.EXTRA_TEST_ID, id)
             putExtra(BaseTestActivity.EXTRA_TITLE, title)
             if (step != null) putExtra(BaseTestActivity.EXTRA_STEP, step)

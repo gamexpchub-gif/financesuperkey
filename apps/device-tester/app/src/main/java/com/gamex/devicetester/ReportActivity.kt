@@ -158,7 +158,7 @@ class ReportActivity : AppCompatActivity() {
         }
         for ((section, list) in DeviceInfo.collect(this)) {
             out += section to 1
-            for ((k, v) in list) out += "$k: ${v.replace('\n', ' | ')}" to 0
+            for ((k, v) in list) out += "$k: ${v.replace("\n", " | ")}" to 0
             out += "" to 0
         }
         return out
