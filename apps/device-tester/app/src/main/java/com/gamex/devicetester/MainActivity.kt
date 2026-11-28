@@ -27,7 +27,9 @@ import com.gamex.devicetester.core.TestRegistry
 import com.gamex.devicetester.core.TestStatus
 import com.gamex.devicetester.ui.MATCH
 import com.gamex.devicetester.ui.Palette
+import com.gamex.devicetester.ui.HoloBackground
 import com.gamex.devicetester.ui.PhoneArtView
+import com.gamex.devicetester.ui.PulseLogo
 import com.gamex.devicetester.ui.ThemeManager
 import com.gamex.devicetester.ui.ThemedActivity
 import com.gamex.devicetester.ui.WRAP
@@ -66,14 +68,14 @@ class MainActivity : ThemedActivity() {
         items = TestRegistry.build(this)
         tab = savedInstanceState?.getInt("tab", 0) ?: 0
 
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Palette.BG)
-        }
+        val stack = FrameLayout(this)
+        stack.addView(HoloBackground(this), FrameLayout.LayoutParams(MATCH, MATCH))
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        stack.addView(root, FrameLayout.LayoutParams(MATCH, MATCH))
         pages = FrameLayout(this)
         root.addView(pages, LinearLayout.LayoutParams(MATCH, 0, 1f))
         root.addView(buildNav(), lpMatchWrap())
-        setContentView(root)
+        setContentView(stack)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -149,9 +151,10 @@ class MainActivity : ThemedActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        header.addView(iconBadge("🩺", Palette.ACCENT, 50, 24f).apply {
-            (layoutParams as LinearLayout.LayoutParams).marginEnd = dp(12)
-        })
+        header.addView(FrameLayout(this).apply {
+            background = roundedBg(Palette.alpha(Palette.ACCENT, if (Palette.dark) 40 else 22), dpf(16f), Palette.alpha(Palette.CYAN, 120), dp(1))
+            addView(PulseLogo(context), FrameLayout.LayoutParams(dp(36), dp(26), Gravity.CENTER))
+        }, LinearLayout.LayoutParams(dp(52), dp(52)).apply { marginEnd = dp(12) })
         val titles = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         titles.addView(brandTitle(24f))
         titles.addView(label("Ultimate Device Health Checker", 12f, Palette.MUTED))

@@ -19,6 +19,7 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import com.gamex.devicetester.core.BaseTestActivity
+import com.gamex.devicetester.ui.Checklist
 import com.gamex.devicetester.ui.KeyValueList
 import com.gamex.devicetester.ui.MATCH
 import com.gamex.devicetester.ui.Palette
@@ -113,6 +114,7 @@ class ProximityTestActivity : BaseTestActivity(), SensorEventListener {
     private var sawNear = false
     private var transitions = 0
     private var lastNear: Boolean? = null
+    private lateinit var checks: Checklist
 
     override fun currentNote(): String = "Near/far transitions: $transitions"
 
@@ -127,9 +129,12 @@ class ProximityTestActivity : BaseTestActivity(), SensorEventListener {
             background = roundedBg(Palette.CARD, dpf(20f), Palette.STROKE, dp(1))
         }
         col.addView(big, lpMatchWrap(bottom = dp(12)))
+        checks = Checklist(this).add("Sensor detected", "Near detection", "Far detection")
+        col.addView(checks, lpMatchWrap(bottom = dp(12)))
         values = label("", 13f, Palette.MUTED)
         col.addView(values)
         val s = sensor
+        checks.set("Sensor detected", if (s != null) Checklist.OK else Checklist.FAIL)
         if (s == null) {
             big.text = "NOT FOUND"
             setStatus("No proximity sensor reported — screen may stay on during calls", Palette.FAIL)
@@ -158,6 +163,8 @@ class ProximityTestActivity : BaseTestActivity(), SensorEventListener {
         if (lastNear != null && lastNear != near) transitions++
         lastNear = near
         if (near) sawNear = true
+        if (sawNear) checks.set("Near detection", Checklist.OK)
+        if (sawNear && !near) checks.set("Far detection", Checklist.OK)
         if (sawNear && !near && transitions >= 2) autoPass()
         else if (!sawNear) setStatus("Now cover the sensor", Palette.TEXT)
         else if (near) setStatus("Detected NEAR — now remove your hand", Palette.ACCENT)
@@ -188,6 +195,7 @@ class SensorTestActivity : BaseTestActivity(), SensorEventListener {
     private val geomagnetic = FloatArray(3)
     private var haveGravity = false
     private var summary = ""
+    private lateinit var checks: Checklist
 
     override fun currentNote(): String = summary
 
@@ -220,10 +228,13 @@ class SensorTestActivity : BaseTestActivity(), SensorEventListener {
             col.addView(pb, LinearLayout.LayoutParams(MATCH, dp(18)).apply { bottomMargin = dp(6) })
             bars += pb
         }
+        checks = Checklist(this).add("Sensor detected", "Live data stream", "Range verification")
+        col.addView(checks, lpMatchWrap(top = dp(4)))
         info = label("", 12f, Palette.MUTED)
         col.addView(info, lpMatchWrap(top = dp(8)))
 
         val s = sensor
+        checks.set("Sensor detected", if (s != null) Checklist.OK else Checklist.FAIL)
         if (s == null) {
             big.text = "NOT FOUND"
             setStatus("This sensor is not present on the device", Palette.FAIL)
@@ -279,6 +290,9 @@ class SensorTestActivity : BaseTestActivity(), SensorEventListener {
 
     private fun updateUi(e: SensorEvent) {
         val s = sensor ?: return
+        checks.set("Live data stream", Checklist.OK, "✓ $events events")
+        val norm = maxOf(abs(maxs[0]), abs(mins[0]), 1e-3f)
+        holo?.push(e.values[0] / norm)
         when (type) {
             Sensor.TYPE_LIGHT -> big.text = String.format("%.0f lux", e.values[0])
             Sensor.TYPE_PRESSURE -> big.text = String.format("%.1f hPa", e.values[0])
@@ -346,7 +360,13 @@ class SensorTestActivity : BaseTestActivity(), SensorEventListener {
                 summary = "Values changing"
             }
         }
-        if (ok) autoPass(summary) else setStatus(summary, Palette.MUTED)
+        if (ok) {
+            checks.set("Range verification", Checklist.OK)
+            autoPass(summary)
+        } else {
+            checks.set("Range verification", Checklist.RUNNING, "Move phone…")
+            setStatus(summary, Palette.MUTED)
+        }
     }
 
     private fun compassDir(deg: Double): String {

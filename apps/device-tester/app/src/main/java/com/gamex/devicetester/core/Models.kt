@@ -20,6 +20,7 @@ data class TestItem(
             putExtras(this@TestItem.extras)
             putExtra(BaseTestActivity.EXTRA_TEST_ID, id)
             putExtra(BaseTestActivity.EXTRA_TITLE, title)
+            putExtra(BaseTestActivity.EXTRA_ICON, icon)
             if (step != null) putExtra(BaseTestActivity.EXTRA_STEP, step)
         }
 }

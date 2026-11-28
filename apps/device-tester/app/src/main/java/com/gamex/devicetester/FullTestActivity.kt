@@ -21,7 +21,9 @@ import com.gamex.devicetester.core.TestRegistry
 import com.gamex.devicetester.core.TestStatus
 import com.gamex.devicetester.ui.MATCH
 import com.gamex.devicetester.ui.Palette
+import com.gamex.devicetester.ui.HoloBackground
 import com.gamex.devicetester.ui.PhoneArtView
+import com.gamex.devicetester.ui.PulseLogo
 import com.gamex.devicetester.ui.ProgressRing
 import com.gamex.devicetester.ui.ThemedActivity
 import com.gamex.devicetester.ui.WRAP
@@ -144,16 +146,18 @@ class FullTestActivity : ThemedActivity() {
         val item = queue.getOrNull(index) ?: return
         val g = TestGroups.group(TestGroups.groupKey(item.id))
         launcher.launch(item.intent(this, "STEP ${index + 1} OF ${queue.size}  •  ${g.title.uppercase()}"))
+        @Suppress("DEPRECATION")
+        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
     }
 
     // ---------------------------------------------------------------- UI
 
     private fun buildUi() {
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Palette.BG)
-        }
-        setContentView(root)
+        val stack = FrameLayout(this)
+        stack.addView(HoloBackground(this), FrameLayout.LayoutParams(MATCH, MATCH))
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        stack.addView(root, FrameLayout.LayoutParams(MATCH, MATCH))
+        setContentView(stack)
 
         // Top bar
         val top = LinearLayout(this).apply {
@@ -163,10 +167,13 @@ class FullTestActivity : ThemedActivity() {
         }
         top.addView(circleButton("‹", 44) { confirmStop() }.apply { textSize = 26f })
         val brand = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            addView(brandTitle(22f))
-            addView(label("Ultimate Device Health Checker", 12f, Palette.MUTED))
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            addView(PulseLogo(context), LinearLayout.LayoutParams(dp(40), dp(28)).apply { marginEnd = dp(8) })
+            val bc = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+            bc.addView(brandTitle(21f))
+            bc.addView(label("Ultimate Device Health Checker", 11f, Palette.MUTED))
+            addView(bc)
         }
         top.addView(brand, LinearLayout.LayoutParams(0, WRAP, 1f))
         top.addView(View(this), LinearLayout.LayoutParams(dp(44), dp(44)))

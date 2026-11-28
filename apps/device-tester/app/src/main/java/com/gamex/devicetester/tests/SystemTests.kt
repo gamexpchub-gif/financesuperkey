@@ -77,6 +77,7 @@ class BatteryTestActivity : BaseTestActivity() {
         val cycles = i.getIntExtra("android.os.extra.CYCLE_COUNT", -1)
 
         kv.set("Level", "$pct %")
+        holo?.battery = pct
         val plugText = when (plugged) {
             BatteryManager.BATTERY_PLUGGED_AC -> "AC charger"
             BatteryManager.BATTERY_PLUGGED_USB -> "USB"

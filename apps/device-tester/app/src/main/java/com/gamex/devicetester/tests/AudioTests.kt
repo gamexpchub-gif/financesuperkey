@@ -18,6 +18,7 @@ import android.widget.ProgressBar
 import com.gamex.devicetester.audio.TonePlayer
 import com.gamex.devicetester.audio.Tones
 import com.gamex.devicetester.core.BaseTestActivity
+import com.gamex.devicetester.ui.Checklist
 import com.gamex.devicetester.ui.Palette
 import com.gamex.devicetester.ui.actionButton
 import com.gamex.devicetester.ui.dp
@@ -59,15 +60,33 @@ class SpeakerTestActivity : BaseTestActivity() {
         routeAudio()
 
         val col = scrollColumn()
+        val checks = Checklist(this).add("Audio output route", "Volume level", "Test tone playback", "Count verification")
+        col.addView(checks, lpMatchWrap(bottom = dp(12)))
+        checks.set("Audio output route", Checklist.OK, if (earpiece) "✓ Earpiece" else "✓ Loudspeaker")
+        val volPct = am.getStreamVolume(stream) * 100 / max(1, am.getStreamMaxVolume(stream))
+        checks.set("Volume level", if (volPct > 0) Checklist.OK else Checklist.FAIL, "✓ $volPct%")
         if (earpiece) {
             val hasEarpiece = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
                 .any { it.type == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE }
             if (!hasEarpiece) setStatus("No earpiece reported by this device (tablet?)", Palette.SKIP)
         }
-        addCountQuiz(col, "beeps", "▶ Play beeps") { n, done -> player.play(Tones.beeps(n)) { done() } }
+        addCountQuiz(col, "beeps", "▶ Play beeps") { n, done ->
+            checks.set("Test tone playback", Checklist.RUNNING, "Playing…")
+            checks.set("Count verification", Checklist.PENDING)
+            holo?.level = 1f
+            player.play(Tones.beeps(n)) {
+                holo?.level = 0.25f
+                checks.set("Test tone playback", Checklist.OK)
+                checks.set("Count verification", Checklist.RUNNING, "Your answer…")
+                done()
+            }
+        }
         if (!earpiece) {
             col.addView(
-                actionButton("〰 Frequency sweep 100 Hz → 8 kHz", Palette.CARD_ALT) { player.play(Tones.sweep()) },
+                actionButton("〰 Frequency sweep 100 Hz → 8 kHz", Palette.CARD_ALT) {
+                    holo?.level = 1f
+                    player.play(Tones.sweep()) { holo?.level = 0.25f }
+                },
                 lpMatchWrap(top = dp(8)),
             )
         }
@@ -121,6 +140,7 @@ class MicTestActivity : BaseTestActivity() {
 
     private lateinit var meter: ProgressBar
     private lateinit var recBtn: MaterialButton
+    private lateinit var checks: Checklist
     private val player = TonePlayer(AudioAttributes.USAGE_MEDIA, AudioAttributes.CONTENT_TYPE_SPEECH)
     @Volatile private var stopFlag = false
     private var peakDb = -90.0
@@ -134,11 +154,14 @@ class MicTestActivity : BaseTestActivity() {
             else "This uses the secondary microphone (usually at the TOP or back, used for video & noise-cancelling). Tap Record and speak near the top of the phone.",
         )
         val col = scrollColumn()
+        checks = Checklist(this).add("Microphone access", "Input stream", "Signal level", "Playback")
+        col.addView(checks, lpMatchWrap(bottom = dp(12)))
         meter = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = 100 }
         col.addView(label("Input level", 13f, Palette.MUTED))
         col.addView(meter, lpMatchWrap(top = dp(4), bottom = dp(16)).apply { height = dp(24) })
         recBtn = actionButton("● Record 3 seconds", Palette.FAIL) {
             withPermissions(Manifest.permission.RECORD_AUDIO) { ok ->
+                checks.set("Microphone access", if (ok) Checklist.OK else Checklist.FAIL)
                 if (ok) startRecording() else setStatus("Microphone permission denied", Palette.FAIL)
             }
         }
@@ -173,6 +196,8 @@ class MicTestActivity : BaseTestActivity() {
         player.stop()
         recBtn.isEnabled = false
         setStatus("● Recording… speak now", Palette.FAIL)
+        checks.set("Input stream", Checklist.OK, "✓ Open")
+        checks.set("Signal level", Checklist.RUNNING, "Listening…")
         stopFlag = false
         Thread {
             val total = rate * 3
@@ -194,7 +219,16 @@ class MicTestActivity : BaseTestActivity() {
                     if (blockPeak > peak) peak = blockPeak
                     off += n
                     val lvl = levelPercent(blockPeak)
-                    runOnUiThread { meter.progress = lvl }
+                    val s1 = buf[0] / 32767f * 3f
+                    val s2 = buf[n / 3] / 32767f * 3f
+                    val s3 = buf[2 * n / 3] / 32767f * 3f
+                    runOnUiThread {
+                        meter.progress = lvl
+                        holo?.level = lvl / 100f
+                        holo?.push(s1)
+                        holo?.push(s2)
+                        holo?.push(s3)
+                    }
                 }
                 rec.stop()
             } catch (e: Exception) {
@@ -217,9 +251,12 @@ class MicTestActivity : BaseTestActivity() {
             return
         }
         setStatus(String.format("Peak %.0f dBFS — playing back…", peakDb), Palette.TEXT)
+        checks.set("Signal level", if (peak > 1200) Checklist.OK else Checklist.FAIL, String.format("%.0f dBFS", peakDb))
+        checks.set("Playback", Checklist.RUNNING, "Playing…")
         player.play(data) {
             recBtn.isEnabled = true
             recBtn.text = "● Record again"
+            checks.set("Playback", Checklist.OK)
             if (peak > 1200) {
                 autoPass(String.format("Peak level %.0f dBFS, playback OK", peakDb), 1500)
             } else {
@@ -251,7 +288,10 @@ class HeadsetTestActivity : BaseTestActivity() {
         am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         setInstruction("Plug in wired earphones (3.5 mm jack or USB-C headset). Detection is automatic. Play the tone to check both ears. If the phone has no jack, tap Skip.")
         val col = scrollColumn()
-        col.addView(actionButton("▶ Play tone in earphones") { player.play(Tones.beeps(3, 800.0)) }, lpMatchWrap())
+        col.addView(actionButton("▶ Play tone in earphones") {
+            holo?.level = 1f
+            player.play(Tones.beeps(3, 800.0)) { holo?.level = 0.25f }
+        }, lpMatchWrap())
         am.registerAudioDeviceCallback(callback, handler)
         refresh()
     }
